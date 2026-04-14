@@ -1,225 +1,1252 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Renombrador de Imágenes Mango - Falabella</title>
-    <link rel="icon" href="https://raw.githubusercontent.com/PabloMolinaTorres/inpages/main/falabella.png" type="image/png">
-    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700" rel="stylesheet">
-    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <meta http-equiv="Last-Modified" content="0">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js?v=1.0"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js?v=1.0"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js?v=1.0"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js?v=1.0"></script>
-    <style>
-        * {
-            box-sizing: border-box;
-            font-family: 'Lato', sans-serif;
-        }
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            color: #333;
-            background-color: #fff;
-        }
-        .container {
-            display: flex;
-            height: 100%;
-            width: 100%;
-        }
-        .leftContainer {
-            width: 35%;
-            display: flex;
-            padding: 20px;
-            box-sizing: border-box;
-            flex-direction: column;
-        }
-        .columns {
-            display: flex;
-            justify-content: space-between;
-        }
-        .column {
-            width: 48%;
-        }
-        .rightContainer {
-            width: 60%;
-            padding: 20px;
-            overflow-y: auto;
-            box-sizing: border-box;
-        }
-        .imgContainer {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .imgWrapper {
-            width: 120px;
-            height: 120px;
-            position: relative;
-            display: block;
-            overflow: hidden;
-            border: 1px solid #eeeeee;
-            text-align: center;
-        }
-        .imgWrapper img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .sku {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.5);
-            color: #fff;
-            text-align: center;
-            font-size: 10px;
-            padding: 2px;
-        }
-        textarea {
-            width: 100%;
-            margin: 20px 0;
-            padding: 10px;
-            height: 250px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-family: 'Lato', sans-serif;
-            font-size: 14px;
-            resize: none;
-        }
-        button {
-            width: 100%;
-            border: none;
-            margin: 20px 0;
-            background-color: #8fca00;
-            height: 50px;
-            line-height: 50px;
-            border-radius: 5px;
-            color: white;
-            font-size: 12px;
-            cursor: pointer;
-            text-transform: uppercase;
-        }
-        /* Títulos añadidos */
-        .title {
-            font-size: 18px;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 15px;
-            color: #333;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mango → Falabella</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --green:#8fca00;
+      --green-dark:#78aa00;
+      --bg:#f7f8fa;
+      --panel:#ffffff;
+      --text:#2f3136;
+      --muted:#7a7f87;
+      --border:#e6e8ec;
+      --danger:#d93025;
+      --warning:#d97706;
+      --ok:#15803d;
+      --shadow:0 10px 30px rgba(0,0,0,0.06);
+      --radius:16px;
+    }
+
+    *{
+      box-sizing:border-box;
+      font-family:'Lato', sans-serif;
+    }
+
+    html, body{
+      margin:0;
+      padding:0;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    body{
+      min-height:100vh;
+    }
+
+    .topbar{
+      background:#fff;
+      border-bottom:1px solid var(--border);
+      position:sticky;
+      top:0;
+      z-index:20;
+      backdrop-filter: blur(8px);
+    }
+
+    .topbar-inner{
+      max-width:1600px;
+      margin:0 auto;
+      padding:16px 20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .brand-badge{
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      background:var(--green);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:700;
+      font-size:18px;
+      box-shadow:var(--shadow);
+      flex-shrink:0;
+    }
+
+    .brand-text h1{
+      margin:0;
+      font-size:20px;
+      line-height:1.1;
+    }
+
+    .brand-text p{
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .top-actions{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .wrap{
+      max-width:1600px;
+      margin:0 auto;
+      padding:20px;
+    }
+
+    .layout{
+      display:grid;
+      grid-template-columns:420px 1fr;
+      gap:20px;
+      align-items:start;
+    }
+
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+
+    .panel-header{
+      padding:18px 18px 0;
+    }
+
+    .panel-header h2{
+      margin:0;
+      font-size:18px;
+    }
+
+    .panel-header p{
+      margin:8px 0 0;
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .panel-body{
+      padding:18px;
+    }
+
+    .field{
+      margin-bottom:16px;
+    }
+
+    .field:last-child{
+      margin-bottom:0;
+    }
+
+    label{
+      display:block;
+      font-size:13px;
+      color:#4a4f57;
+      margin-bottom:8px;
+      font-weight:700;
+      letter-spacing:.01em;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select{
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      padding:12px 14px;
+      font-size:14px;
+      color:var(--text);
+      outline:none;
+      transition:border-color .2s ease, box-shadow .2s ease;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus,
+    select:focus{
+      border-color:var(--green);
+      box-shadow:0 0 0 4px rgba(143,202,0,.14);
+    }
+
+    textarea{
+      resize:vertical;
+      min-height:140px;
+      line-height:1.45;
+    }
+
+    .small-textarea{
+      min-height:120px;
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size:13px;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+
+    .grid-3{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:12px;
+    }
+
+    .btn{
+      border:none;
+      border-radius:12px;
+      padding:12px 14px;
+      cursor:pointer;
+      font-size:13px;
+      font-weight:700;
+      letter-spacing:.03em;
+      transition:transform .15s ease, opacity .15s ease, background .15s ease;
+      min-height:44px;
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+    }
+
+    .btn:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+      transform:none;
+    }
+
+    .btn-primary{
+      background:var(--green);
+      color:#fff;
+    }
+
+    .btn-primary:hover{
+      background:var(--green-dark);
+    }
+
+    .btn-secondary{
+      background:#f2f4f7;
+      color:#2f3136;
+      border:1px solid var(--border);
+    }
+
+    .btn-danger{
+      background:#fff1f0;
+      color:var(--danger);
+      border:1px solid #ffd9d6;
+    }
+
+    .toolbar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .toolbar .btn{
+      flex:1 1 auto;
+    }
+
+    .status-grid{
+      display:grid;
+      grid-template-columns:repeat(4, minmax(0,1fr));
+      gap:12px;
+      margin-bottom:18px;
+    }
+
+    .stat{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:14px;
+    }
+
+    .stat .n{
+      display:block;
+      font-size:24px;
+      font-weight:700;
+      line-height:1;
+      margin-bottom:6px;
+    }
+
+    .stat .t{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .status-line{
+      font-size:13px;
+      color:var(--muted);
+      margin-top:12px;
+      min-height:18px;
+    }
+
+    .progress{
+      height:10px;
+      width:100%;
+      border-radius:999px;
+      background:#eef1f4;
+      overflow:hidden;
+      margin-top:12px;
+      border:1px solid var(--border);
+    }
+
+    .progress-bar{
+      height:100%;
+      width:0%;
+      background:linear-gradient(90deg, var(--green), #b2df34);
+      transition:width .2s ease;
+    }
+
+    .preview-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:16px;
+      flex-wrap:wrap;
+    }
+
+    .preview-header h2{
+      margin:0;
+      font-size:18px;
+    }
+
+    .preview-header p{
+      margin:4px 0 0;
+      font-size:13px;
+      color:var(--muted);
+    }
+
+    .cards{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+      gap:16px;
+    }
+
+    .card{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow:var(--shadow);
+      display:flex;
+      flex-direction:column;
+      min-height:100%;
+    }
+
+    .card-thumb{
+      position:relative;
+      background:#fff;
+      aspect-ratio:1 / 1;
+      overflow:hidden;
+      border-bottom:1px solid var(--border);
+    }
+
+    .card-thumb img{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      display:block;
+      background:#fff;
+    }
+
+    .chip-row{
+      position:absolute;
+      top:10px;
+      left:10px;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      max-width:calc(100% - 20px);
+    }
+
+    .chip{
+      font-size:11px;
+      font-weight:700;
+      padding:6px 8px;
+      border-radius:999px;
+      background:rgba(255,255,255,.96);
+      border:1px solid var(--border);
+      color:#333;
+      backdrop-filter:blur(5px);
+    }
+
+    .chip.ok{
+      color:var(--ok);
+      border-color:#cce9d3;
+      background:#f2fcf4;
+    }
+
+    .chip.warn{
+      color:var(--warning);
+      border-color:#f3ddbe;
+      background:#fff8ed;
+    }
+
+    .chip.err{
+      color:var(--danger);
+      border-color:#f7c9c3;
+      background:#fff5f4;
+    }
+
+    .card-body{
+      padding:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      flex:1;
+    }
+
+    .card-title{
+      font-size:14px;
+      font-weight:700;
+      word-break:break-word;
+      line-height:1.35;
+    }
+
+    .meta{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.45;
+      word-break:break-word;
+    }
+
+    .meta strong{
+      color:#41454d;
+    }
+
+    .card-actions{
+      display:flex;
+      gap:8px;
+      margin-top:auto;
+    }
+
+    .card-actions .btn{
+      flex:1;
+      min-height:40px;
+      padding:10px 12px;
+      font-size:12px;
+    }
+
+    .empty{
+      border:1px dashed #d7dbe1;
+      border-radius:16px;
+      padding:38px 20px;
+      background:#fff;
+      text-align:center;
+      color:var(--muted);
+    }
+
+    .error-box{
+      margin-top:18px;
+      background:#fff5f4;
+      border:1px solid #f5c9c5;
+      border-radius:16px;
+      padding:16px;
+    }
+
+    .error-box h3{
+      margin:0 0 10px;
+      font-size:15px;
+      color:var(--danger);
+    }
+
+    .error-list{
+      margin:0;
+      padding-left:18px;
+      color:#6a2a24;
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    .note{
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius:14px;
+      background:#f6faea;
+      border:1px solid #deebb0;
+      font-size:12px;
+      color:#55611f;
+      line-height:1.5;
+    }
+
+    .mono{
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    @media (max-width: 1100px){
+      .layout{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media (max-width: 720px){
+      .status-grid{
+        grid-template-columns:repeat(2, minmax(0,1fr));
+      }
+
+      .grid-2,
+      .grid-3{
+        grid-template-columns:1fr;
+      }
+
+      .topbar-inner{
+        align-items:flex-start;
+        flex-direction:column;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Left Container -->
-        <div class="leftContainer">
-            <!-- Título Replicar -->
-            <div class="title">Replicar</div>
-
-            <!-- Espacio en blanco en lugar de los logos y el selector de países -->
-            <div style="height: 70px;"></div>
-
-            <div class="columns">
-                <div class="column">
-                    <textarea id="mangoInput" placeholder="Modelos Mango, uno por línea"></textarea>
-                    <button id="buscar">Buscar</button> <!-- Botón "Buscar" -->
-                </div>
-                <div class="column">
-                    <textarea id="falabellaInput" placeholder="SKUs Falabella, uno por línea"></textarea>
-                    <button id="downloadAll">Descargar Todo</button> <!-- Botón "Descargar Todo" -->
-                </div>
-            </div>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-badge">M</div>
+        <div class="brand-text">
+          <h1>Mango → Falabella</h1>
+          <p>MVP cliente para probar links directos, equivalencias y descarga renombrada</p>
         </div>
+      </div>
 
-        <!-- Right Container -->
-        <div class="rightContainer">
-            <!-- Título Previsualizar -->
-            <div class="title">Previsualizar</div>
-            <div class="imgContainer" id="imgContainer"></div>
-        </div>
-
-        <script>
-            const vistasMango = ['_99.jpg', '_99_R.jpg', '_99-99999999_01.jpg', '_99_D5.jpg', '_99_D3.jpg', '_99_B.jpg', '_99_D1.jpg', '_99_D4.jpg', '_99_D8.jpg', '_99_D0.jpg', '_D1.jpg', '_D2.jpg', '_D3.jpg', '_D4.jpg', '_D5.jpg'];
-
-            // Función para mostrar imágenes al buscar
-            $('#buscar').click(function() {
-                const modelosMango = $('#mangoInput').val().trim().split('\n');
-                $('#imgContainer').empty(); // Limpiar el contenedor de imágenes anteriores
-
-                if (modelosMango.length > 0) {
-                    modelosMango.forEach(function(modelo) {
-                        vistasMango.forEach(function(vista) {
-                            const imgUrl = `https://shop.mango.com/assets/rcs/pics/static/T7/fotos/S/${modelo}${vista}`;
-                            const img = new Image();
-                            img.src = imgUrl;
-                            img.alt = modelo;
-
-                            img.onload = function() {
-                                const imgElement = `<div class="imgWrapper"><img src="${imgUrl}" alt="${modelo}"><div class="sku">${modelo}</div></div>`;
-                                $('#imgContainer').append(imgElement);
-                            };
-
-                            img.onerror = function() {
-                                console.log(`Imagen no encontrada: ${imgUrl}`);
-                            };
-                        });
-                    });
-                } else {
-                    alert("Por favor, ingrese modelos de Mango.");
-                }
-            });
-
-            // Función para descargar las imágenes renombradas
-            $('#downloadAll').click(function() {
-                const modelosMango = $('#mangoInput').val().trim().split('\n');
-                const skusFalabella = $('#falabellaInput').val().trim().split('\n');
-                const zip = new JSZip();
-                let count = 0;
-                const zipFilename = getFormattedDate() + ".zip";
-
-                if (modelosMango.length !== skusFalabella.length) {
-                    alert('La cantidad de modelos de Mango y SKUs de Falabella debe coincidir.');
-                    return;
-                }
-
-                modelosMango.forEach(function(modeloMango, index) {
-                    const skuFalabella = skusFalabella[index];
-                    vistasMango.forEach(function(vista, vistaIndex) {
-                        const imgUrl = `https://shop.mango.com/assets/rcs/pics/static/T7/fotos/S/${modeloMango}${vista}`;
-                        const filename = skuFalabella + '_vista' + (vistaIndex + 1) + '.jpg';
-
-                        JSZipUtils.getBinaryContent(imgUrl, function(err, data) {
-                            if (err) {
-                                console.error("Error al obtener la imagen:", err);
-                                return;
-                            }
-                            zip.file(filename, data, { binary: true });
-                            count++;
-                            if (count === modelosMango.length * vistasMango.length) {
-                                zip.generateAsync({ type: 'blob' }).then(function(content) {
-                                    saveAs(content, zipFilename);
-                                });
-                            }
-                        });
-                    });
-                });
-            });
-
-            function getFormattedDate() {
-                const date = new Date();
-                const day = String(date.getDate()).padStart(2, '0');
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const hours = String(date.getHours()).padStart(2, '0');
-                const minutes = String(date.getMinutes()).padStart(2, '0');
-                return day + '-' + month + '_' + hours + minutes;
-            }
-        </script>
+      <div class="top-actions">
+        <button class="btn btn-secondary" id="btnFillDemo">Cargar ejemplo</button>
+        <button class="btn btn-secondary" id="btnClearAll">Limpiar</button>
+      </div>
     </div>
+  </div>
+
+  <div class="wrap">
+    <div class="layout">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Configuración</h2>
+          <p>
+            Pega los links directos de Mango, define el SKU Falabella y ajusta la equivalencia de vistas.
+            Por ahora este MVP trabaja con URLs directas de imagen.
+          </p>
+        </div>
+
+        <div class="panel-body">
+          <div class="field">
+            <label for="inputUrls">Links Mango (uno por línea)</label>
+            <textarea id="inputUrls" placeholder="https://media.mango.com/is/image/punto/27055968-32-002?wid=2048"></textarea>
+          </div>
+
+          <div class="grid-2">
+            <div class="field">
+              <label for="inputSkuFalabella">SKU Falabella</label>
+              <input id="inputSkuFalabella" type="text" placeholder="123456789" />
+            </div>
+
+            <div class="field">
+              <label for="selectBrand">Marca origen</label>
+              <select id="selectBrand">
+                <option value="mango">Mango</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div class="field">
+              <label for="inputWidth">wid de descarga</label>
+              <input id="inputWidth" type="number" min="1" step="1" value="2048" />
+            </div>
+
+            <div class="field">
+              <label for="selectSuffixFormat">Formato vista Falabella</label>
+              <select id="selectSuffixFormat">
+                <option value="plain">_1 _2 _3</option>
+                <option value="pad2">_01 _02 _03</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="inputZipName">Nombre ZIP</label>
+              <input id="inputZipName" type="text" placeholder="auto" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="inputMapping">Equivalencia de vistas</label>
+            <textarea id="inputMapping" class="small-textarea" spellcheck="false"></textarea>
+          </div>
+
+          <div class="toolbar">
+            <button class="btn btn-primary" id="btnProcess">Procesar</button>
+            <button class="btn btn-primary" id="btnDownloadAll" disabled>Descargar ZIP</button>
+            <button class="btn btn-secondary" id="btnCopyManifest" disabled>Copiar manifiesto</button>
+          </div>
+
+          <div class="status-line" id="statusLine">Esperando datos...</div>
+          <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+
+          <div class="note">
+            <strong>Tip:</strong> la equivalencia se edita en formato <span class="mono">VISTAORIGEN=VISTAFALABELLA</span>.
+            Ejemplo: <span class="mono">002=1</span>.
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="status-grid">
+          <div class="stat">
+            <span class="n" id="statTotal">0</span>
+            <span class="t">Links ingresados</span>
+          </div>
+
+          <div class="stat">
+            <span class="n" id="statValid">0</span>
+            <span class="t">Links válidos</span>
+          </div>
+
+          <div class="stat">
+            <span class="n" id="statMapped">0</span>
+            <span class="t">Con equivalencia</span>
+          </div>
+
+          <div class="stat">
+            <span class="n" id="statErrors">0</span>
+            <span class="t">Errores / sin mapping</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-body">
+            <div class="preview-header">
+              <div>
+                <h2>Preview</h2>
+                <p id="previewSubtitle">Aquí verás el orden final y los nombres de salida.</p>
+              </div>
+            </div>
+
+            <div id="previewArea">
+              <div class="empty">
+                Pega links de Mango, define un SKU Falabella y presiona <strong>Procesar</strong>.
+              </div>
+            </div>
+
+            <div id="errorsContainer"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <script>
+    const DEFAULT_MAPPING = [
+      "# Equivalencia inicial observada en Mango",
+      "002=1",
+      "001=2",
+      "003=3",
+      "004=4",
+      "023=5",
+      "021=6",
+      "030=7"
+    ].join("\\n");
+
+    const DEMO_URLS = [
+      "https://media.mango.com/is/image/punto/27055968-32-002?wid=2048",
+      "https://media.mango.com/is/image/punto/27055968-32-001?wid=2048",
+      "https://media.mango.com/is/image/punto/27055968-32-003?wid=2048",
+      "https://media.mango.com/is/image/punto/27055968-32-004?wid=2048",
+      "https://media.mango.com/is/image/punto/27055968-32-023?wid=2048",
+      "https://media.mango.com/is/image/punto/27055968-32-021?wid=2048",
+      "https://media.mango.com/is/image/punto/27055968-32-030?wid=2048"
+    ].join("\\n");
+
+    const state = {
+      items: [],
+      errors: [],
+      manifestText: ""
+    };
+
+    const els = {
+      inputUrls: document.getElementById("inputUrls"),
+      inputSkuFalabella: document.getElementById("inputSkuFalabella"),
+      selectBrand: document.getElementById("selectBrand"),
+      inputWidth: document.getElementById("inputWidth"),
+      selectSuffixFormat: document.getElementById("selectSuffixFormat"),
+      inputZipName: document.getElementById("inputZipName"),
+      inputMapping: document.getElementById("inputMapping"),
+      btnProcess: document.getElementById("btnProcess"),
+      btnDownloadAll: document.getElementById("btnDownloadAll"),
+      btnCopyManifest: document.getElementById("btnCopyManifest"),
+      btnFillDemo: document.getElementById("btnFillDemo"),
+      btnClearAll: document.getElementById("btnClearAll"),
+      statusLine: document.getElementById("statusLine"),
+      progressBar: document.getElementById("progressBar"),
+      statTotal: document.getElementById("statTotal"),
+      statValid: document.getElementById("statValid"),
+      statMapped: document.getElementById("statMapped"),
+      statErrors: document.getElementById("statErrors"),
+      previewArea: document.getElementById("previewArea"),
+      previewSubtitle: document.getElementById("previewSubtitle"),
+      errorsContainer: document.getElementById("errorsContainer")
+    };
+
+    function init() {
+      els.inputMapping.value = DEFAULT_MAPPING;
+
+      els.btnFillDemo.addEventListener("click", fillDemo);
+      els.btnClearAll.addEventListener("click", clearAll);
+      els.btnProcess.addEventListener("click", processData);
+      els.btnDownloadAll.addEventListener("click", downloadAllAsZip);
+      els.btnCopyManifest.addEventListener("click", copyManifest);
+    }
+
+    function fillDemo() {
+      els.inputUrls.value = DEMO_URLS;
+      els.inputSkuFalabella.value = "123456789";
+      els.inputWidth.value = "2048";
+      els.selectSuffixFormat.value = "plain";
+      els.inputZipName.value = "";
+      els.inputMapping.value = DEFAULT_MAPPING;
+      setStatus("Ejemplo cargado. Presiona Procesar.");
+    }
+
+    function clearAll() {
+      els.inputUrls.value = "";
+      els.inputSkuFalabella.value = "";
+      els.inputWidth.value = "2048";
+      els.selectSuffixFormat.value = "plain";
+      els.inputZipName.value = "";
+      els.inputMapping.value = DEFAULT_MAPPING;
+      state.items = [];
+      state.errors = [];
+      state.manifestText = "";
+      renderAll();
+      setStatus("Campos limpiados.");
+      setProgress(0);
+    }
+
+    function setStatus(text) {
+      els.statusLine.textContent = text;
+    }
+
+    function setProgress(percent) {
+      const safe = Math.max(0, Math.min(100, Number(percent) || 0));
+      els.progressBar.style.width = safe + "%";
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function parseMapping(text) {
+      const lines = String(text || "").split(/\\r?\\n/);
+      const mapping = {};
+      const mappingErrors = [];
+
+      lines.forEach((raw, index) => {
+        const line = raw.trim();
+
+        if (!line || line.startsWith("#")) return;
+
+        const match = line.match(/^(\\d{3})\\s*=\\s*(\\d{1,3})$/);
+        if (!match) {
+          mappingErrors.push(`Línea ${index + 1} inválida en equivalencia: "${line}"`);
+          return;
+        }
+
+        const sourceView = match[1];
+        const targetView = Number(match[2]);
+        mapping[sourceView] = targetView;
+      });
+
+      return { mapping, mappingErrors };
+    }
+
+    function splitAndCleanUrls(text) {
+      return String(text || "")
+        .split(/\\r?\\n/)
+        .map(v => v.trim())
+        .filter(Boolean);
+    }
+
+    function dedupeKeepOrder(arr) {
+      const seen = new Set();
+      const out = [];
+
+      arr.forEach(item => {
+        if (seen.has(item)) return;
+        seen.add(item);
+        out.push(item);
+      });
+
+      return out;
+    }
+
+    function normalizeMangoUrl(rawUrl, width) {
+      try {
+        const url = new URL(rawUrl);
+
+        if (width && Number(width) > 0) {
+          url.searchParams.set("wid", String(Number(width)));
+        }
+
+        return url.toString();
+      } catch {
+        return rawUrl;
+      }
+    }
+
+    function parseMangoUrl(rawUrl, width) {
+      let url;
+      try {
+        url = new URL(normalizeMangoUrl(rawUrl, width));
+      } catch {
+        return {
+          ok: false,
+          error: `URL inválida: ${rawUrl}`,
+          rawUrl
+        };
+      }
+
+      const hostname = url.hostname.toLowerCase();
+      if (!hostname.includes("media.mango.com")) {
+        return {
+          ok: false,
+          error: `No parece ser media.mango.com: ${rawUrl}`,
+          rawUrl
+        };
+      }
+
+      const fileName = decodeURIComponent(url.pathname.split("/").pop() || "");
+      const parts = fileName.split("-");
+
+      if (parts.length < 3) {
+        return {
+          ok: false,
+          error: `No se pudo extraer SKU/color/vista: ${rawUrl}`,
+          rawUrl
+        };
+      }
+
+      const sourceView = parts.pop();
+      const colorCode = parts.pop();
+      const mangoSku = parts.join("-");
+
+      if (!/^\\d{3}$/.test(sourceView)) {
+        return {
+          ok: false,
+          error: `La vista origen no tiene 3 dígitos: ${rawUrl}`,
+          rawUrl
+        };
+      }
+
+      return {
+        ok: true,
+        brand: "mango",
+        originalUrl: rawUrl,
+        normalizedUrl: url.toString(),
+        mangoSku,
+        colorCode,
+        sourceView,
+        inputName: fileName
+      };
+    }
+
+    function formatFalabellaView(position, format) {
+      const num = Number(position);
+      if (format === "pad2") {
+        return String(num).padStart(2, "0");
+      }
+      return String(num);
+    }
+
+    function buildOutputFilename(skuFalabella, targetPosition, format, ext = "jpg") {
+      const view = formatFalabellaView(targetPosition, format);
+      return `${skuFalabella}_${view}.${ext}`;
+    }
+
+    function guessExtensionFromBlob(blob, fallback = "jpg") {
+      const type = (blob && blob.type ? blob.type : "").toLowerCase();
+
+      if (type.includes("png")) return "png";
+      if (type.includes("webp")) return "webp";
+      if (type.includes("jpeg")) return "jpg";
+      if (type.includes("jpg")) return "jpg";
+      if (type.includes("gif")) return "gif";
+
+      return fallback;
+    }
+
+    function makeAutoZipName(skuFalabella) {
+      const now = new Date();
+      const YYYY = now.getFullYear();
+      const MM = String(now.getMonth() + 1).padStart(2, "0");
+      const DD = String(now.getDate()).padStart(2, "0");
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+
+      return `${skuFalabella || "mango"}-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
+    }
+
+    function processData() {
+      const rawUrls = els.inputUrls.value;
+      const skuFalabella = els.inputSkuFalabella.value.trim();
+      const width = Number(els.inputWidth.value || 2048);
+      const suffixFormat = els.selectSuffixFormat.value;
+      const brand = els.selectBrand.value;
+      const uniqueUrls = dedupeKeepOrder(splitAndCleanUrls(rawUrls));
+
+      if (!uniqueUrls.length) {
+        setStatus("Debes ingresar al menos un link.");
+        return;
+      }
+
+      if (!skuFalabella) {
+        setStatus("Debes ingresar un SKU Falabella.");
+        return;
+      }
+
+      const { mapping, mappingErrors } = parseMapping(els.inputMapping.value);
+
+      state.items = [];
+      state.errors = [...mappingErrors];
+
+      uniqueUrls.forEach((url, index) => {
+        let parsed;
+
+        if (brand === "mango") {
+          parsed = parseMangoUrl(url, width);
+        } else {
+          parsed = {
+            ok: false,
+            error: `Marca no soportada todavía: ${brand}`,
+            rawUrl: url
+          };
+        }
+
+        if (!parsed.ok) {
+          state.errors.push(parsed.error);
+          return;
+        }
+
+        const targetPosition = mapping[parsed.sourceView] ?? null;
+        const isMapped = Number.isFinite(targetPosition);
+        const outputFilename = isMapped
+          ? buildOutputFilename(skuFalabella, targetPosition, suffixFormat, "jpg")
+          : null;
+
+        const item = {
+          index,
+          brand: parsed.brand,
+          originalUrl: parsed.originalUrl,
+          downloadUrl: parsed.normalizedUrl,
+          mangoSku: parsed.mangoSku,
+          colorCode: parsed.colorCode,
+          sourceView: parsed.sourceView,
+          targetPosition,
+          isMapped,
+          outputFilename,
+          note: isMapped ? "" : `Sin equivalencia para vista ${parsed.sourceView}`
+        };
+
+        if (!isMapped) {
+          state.errors.push(`Sin equivalencia para vista ${parsed.sourceView}: ${parsed.originalUrl}`);
+        }
+
+        state.items.push(item);
+      });
+
+      state.items.sort((a, b) => {
+        if (a.isMapped && b.isMapped) return a.targetPosition - b.targetPosition;
+        if (a.isMapped && !b.isMapped) return -1;
+        if (!a.isMapped && b.isMapped) return 1;
+        return a.index - b.index;
+      });
+
+      state.manifestText = buildManifestText(skuFalabella, state.items);
+      renderAll();
+
+      const validCount = state.items.length;
+      const mappedCount = state.items.filter(i => i.isMapped).length;
+      const totalErrors = state.errors.length;
+
+      setStatus(`Procesado: ${validCount} válido(s), ${mappedCount} con equivalencia, ${totalErrors} observación(es).`);
+      setProgress(0);
+    }
+
+    function buildManifestText(skuFalabella, items) {
+      const lines = [];
+      lines.push(`SKU Falabella: ${skuFalabella}`);
+      lines.push("");
+
+      items.forEach(item => {
+        lines.push([
+          `Marca: ${item.brand}`,
+          `Mango SKU: ${item.mangoSku}`,
+          `Color: ${item.colorCode}`,
+          `Vista origen: ${item.sourceView}`,
+          `Vista Falabella: ${item.isMapped ? item.targetPosition : "SIN EQUIVALENCIA"}`,
+          `Archivo: ${item.outputFilename || "SIN NOMBRE FINAL"}`,
+          `URL: ${item.downloadUrl}`
+        ].join(" | "));
+      });
+
+      return lines.join("\\n");
+    }
+
+    function renderAll() {
+      renderStats();
+      renderPreview();
+      renderErrors();
+
+      const mappedCount = state.items.filter(i => i.isMapped).length;
+      els.btnDownloadAll.disabled = mappedCount === 0;
+      els.btnCopyManifest.disabled = !state.items.length;
+    }
+
+    function renderStats() {
+      const totalInput = dedupeKeepOrder(splitAndCleanUrls(els.inputUrls.value)).length;
+      const validCount = state.items.length;
+      const mappedCount = state.items.filter(i => i.isMapped).length;
+      const errorCount = state.errors.length;
+
+      els.statTotal.textContent = String(totalInput);
+      els.statValid.textContent = String(validCount);
+      els.statMapped.textContent = String(mappedCount);
+      els.statErrors.textContent = String(errorCount);
+
+      if (validCount) {
+        els.previewSubtitle.textContent = `Se mostrarán ${validCount} imagen(es). El orden visible ya respeta la equivalencia definida.`;
+      } else {
+        els.previewSubtitle.textContent = "Aquí verás el orden final y los nombres de salida.";
+      }
+    }
+
+    function renderPreview() {
+      if (!state.items.length) {
+        els.previewArea.innerHTML = `
+          <div class="empty">
+            Pega links de Mango, define un SKU Falabella y presiona <strong>Procesar</strong>.
+          </div>
+        `;
+        return;
+      }
+
+      const html = state.items.map(item => {
+        const statusChip = item.isMapped
+          ? `<span class="chip ok">Mapeada a _${escapeHtml(String(item.targetPosition))}</span>`
+          : `<span class="chip warn">Sin equivalencia</span>`;
+
+        const sourceChip = `<span class="chip">Vista ${escapeHtml(item.sourceView)}</span>`;
+
+        return `
+          <div class="card">
+            <div class="card-thumb">
+              <div class="chip-row">
+                ${sourceChip}
+                ${statusChip}
+              </div>
+              <img src="${escapeHtml(item.downloadUrl)}" alt="${escapeHtml(item.outputFilename || item.downloadUrl)}" loading="lazy" />
+            </div>
+
+            <div class="card-body">
+              <div class="card-title">${escapeHtml(item.outputFilename || "SIN NOMBRE FINAL")}</div>
+
+              <div class="meta">
+                <strong>Mango SKU:</strong> ${escapeHtml(item.mangoSku)}<br>
+                <strong>Color:</strong> ${escapeHtml(item.colorCode)}<br>
+                <strong>Vista origen:</strong> ${escapeHtml(item.sourceView)}<br>
+                <strong>Vista Falabella:</strong> ${item.isMapped ? escapeHtml(String(item.targetPosition)) : "—"}
+              </div>
+
+              <div class="meta mono">${escapeHtml(item.downloadUrl)}</div>
+
+              <div class="card-actions">
+                <button class="btn btn-secondary" data-action="open" data-url="${escapeHtml(item.downloadUrl)}">Abrir</button>
+                <button class="btn btn-primary" data-action="single" data-index="${item.index}" ${item.isMapped ? "" : "disabled"}>Descargar</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      els.previewArea.innerHTML = `<div class="cards">${html}</div>`;
+
+      els.previewArea.querySelectorAll('[data-action="open"]').forEach(btn => {
+        btn.addEventListener("click", () => {
+          const url = btn.getAttribute("data-url");
+          window.open(url, "_blank", "noopener,noreferrer");
+        });
+      });
+
+      els.previewArea.querySelectorAll('[data-action="single"]').forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const originalIndex = Number(btn.getAttribute("data-index"));
+          const item = state.items.find(x => x.index === originalIndex);
+          if (!item || !item.isMapped) return;
+          await downloadSingleItem(item);
+        });
+      });
+    }
+
+    function renderErrors() {
+      if (!state.errors.length) {
+        els.errorsContainer.innerHTML = "";
+        return;
+      }
+
+      const html = `
+        <div class="error-box">
+          <h3>Observaciones</h3>
+          <ol class="error-list">
+            ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
+          </ol>
+        </div>
+      `;
+
+      els.errorsContainer.innerHTML = html;
+    }
+
+    async function fetchBlobWithCors(url) {
+      const response = await fetch(url, {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return await response.blob();
+    }
+
+    async function downloadSingleItem(item) {
+      try {
+        setStatus(`Descargando ${item.outputFilename}...`);
+        setProgress(10);
+
+        const blob = await fetchBlobWithCors(item.downloadUrl);
+        setProgress(80);
+
+        const ext = guessExtensionFromBlob(blob, "jpg");
+        const finalName = item.outputFilename.replace(/\\.[^.]+$/, `.${ext}`);
+
+        saveAs(blob, finalName);
+
+        setProgress(100);
+        setStatus(`Descarga completada: ${finalName}`);
+      } catch (error) {
+        console.error(error);
+        setProgress(0);
+        setStatus(`No se pudo descargar ${item.outputFilename}. El navegador no pudo leer el recurso externo.`);
+      }
+    }
+
+    async function downloadAllAsZip() {
+      const mappedItems = state.items.filter(item => item.isMapped);
+
+      if (!mappedItems.length) {
+        setStatus("No hay imágenes mapeadas para descargar.");
+        return;
+      }
+
+      els.btnDownloadAll.disabled = true;
+      els.btnProcess.disabled = true;
+      els.btnCopyManifest.disabled = true;
+
+      try {
+        const zip = new JSZip();
+        const total = mappedItems.length;
+        let completed = 0;
+        let failed = 0;
+
+        setStatus(`Preparando ZIP... 0/${total}`);
+        setProgress(0);
+
+        for (const item of mappedItems) {
+          try {
+            const blob = await fetchBlobWithCors(item.downloadUrl);
+            const ext = guessExtensionFromBlob(blob, "jpg");
+            const finalName = item.outputFilename.replace(/\\.[^.]+$/, `.${ext}`);
+            zip.file(finalName, blob);
+
+            completed++;
+            const percent = Math.round((completed / total) * 100);
+            setProgress(percent);
+            setStatus(`Preparando ZIP... ${completed}/${total}`);
+          } catch (error) {
+            console.error("Error descargando", item.downloadUrl, error);
+            failed++;
+            state.errors.push(`Falló la descarga de ${item.downloadUrl}`);
+            completed++;
+            const percent = Math.round((completed / total) * 100);
+            setProgress(percent);
+            setStatus(`Preparando ZIP... ${completed}/${total} (fallidas: ${failed})`);
+          }
+        }
+
+        const manifestName = "manifest.txt";
+        zip.file(manifestName, state.manifestText || "Sin manifiesto");
+
+        setStatus("Comprimiendo ZIP...");
+        setProgress(100);
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const customName = els.inputZipName.value.trim();
+        const zipName = customName
+          ? (customName.toLowerCase().endsWith(".zip") ? customName : `${customName}.zip`)
+          : makeAutoZipName(els.inputSkuFalabella.value.trim());
+
+        saveAs(zipBlob, zipName);
+
+        renderErrors();
+
+        if (failed > 0) {
+          setStatus(`ZIP generado con ${failed} archivo(s) fallidos. Revisa las observaciones.`);
+        } else {
+          setStatus(`ZIP generado correctamente: ${zipName}`);
+        }
+      } catch (error) {
+        console.error(error);
+        setProgress(0);
+        setStatus("No se pudo generar el ZIP.");
+      } finally {
+        els.btnDownloadAll.disabled = state.items.filter(item => item.isMapped).length === 0;
+        els.btnProcess.disabled = false;
+        els.btnCopyManifest.disabled = !state.items.length;
+      }
+    }
+
+    async function copyManifest() {
+      if (!state.manifestText) return;
+
+      try {
+        await navigator.clipboard.writeText(state.manifestText);
+        setStatus("Manifiesto copiado al portapapeles.");
+      } catch (error) {
+        console.error(error);
+        setStatus("No se pudo copiar el manifiesto.");
+      }
+    }
+
+    init();
+  </script>
 </body>
 </html>
