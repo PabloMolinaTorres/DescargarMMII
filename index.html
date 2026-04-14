@@ -276,7 +276,7 @@
     table{
       width:100%;
       border-collapse:collapse;
-      min-width:980px;
+      min-width:1100px;
     }
 
     th, td{
@@ -786,20 +786,20 @@
 
       for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
         const row = state.rawRows[rowIndex];
-        const mangoCode = String(row.mangoCode || "").trim();
+        const inputCode = String(row.mangoCode || "").trim();
         const skuFalabella = String(row.skuFalabella || "").trim();
 
-        if (!mangoCode || !skuFalabella) {
+        if (!inputCode || !skuFalabella) {
           state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
           setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
           continue;
         }
 
-        const parsed = brand.parseCode(mangoCode);
+        const parsed = brand.parseCode(inputCode);
 
         if (!parsed) {
-          state.errors.push(`Fila ${row.rowNumber}: código inválido "${mangoCode}".`);
+          state.errors.push(`Fila ${row.rowNumber}: código inválido "${inputCode}".`);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
           setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
           continue;
@@ -830,7 +830,7 @@
 
           state.items.push({
             rowNumber: row.rowNumber,
-            inputCode: mangoCode,
+            inputCode,
             mangoCode: fullCode,
             skuFalabella,
             sourceView,
@@ -847,7 +847,7 @@
           if (parsed.type === "exact") {
             state.errors.push(`Fila ${row.rowNumber}: no existe la vista "${parsed.sourceView}" para "${parsed.model}-${parsed.color}".`);
           } else {
-            state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${mangoCode}".`);
+            state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
           }
         }
 
