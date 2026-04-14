@@ -276,7 +276,7 @@
     table{
       width:100%;
       border-collapse:collapse;
-      min-width:920px;
+      min-width:980px;
     }
 
     th, td{
@@ -437,7 +437,7 @@
             </div>
           </div>
 
-          <div class="summary" id="summaryBar">
+          <div class="summary">
             <div class="pill">Filas cargadas: <span id="summaryRows">0</span></div>
             <div class="pill">Imágenes listas: <span id="summaryReady">0</span></div>
             <div class="pill">Errores: <span id="summaryErrors">0</span></div>
@@ -469,32 +469,58 @@
       mango: {
         id: "mango",
         label: "Mango",
-        buildUrl(code) {
-          return `https://media.mango.com/is/image/punto/${code}?wid=2048`;
+        iconText: "MNG",
+        candidateViews: ["002", "001", "003", "004", "023", "021", "030"],
+        hiddenMap: {
+          "002": 1,
+          "001": 2,
+          "003": 3,
+          "004": 4,
+          "023": 5,
+          "021": 6,
+          "030": 7
+        },
+        buildUrl(code, width = 2048) {
+          return `https://media.mango.com/is/image/punto/${code}?wid=${width}`;
         },
         parseCode(code) {
           const clean = String(code || "").trim();
-          const match = clean.match(/^(.+)-(\d{2})-(\d{3})$/);
-          if (!match) return null;
 
-          return {
-            raw: clean,
-            model: match[1],
-            color: match[2],
-            sourceView: match[3]
-          };
+          const exactMatch = clean.match(/^(.+)-(\d{2})-(\d{3})$/);
+          if (exactMatch) {
+            return {
+              type: "exact",
+              raw: clean,
+              model: exactMatch[1],
+              color: exactMatch[2],
+              sourceView: exactMatch[3]
+            };
+          }
+
+          const baseMatch = clean.match(/^(.+)-(\d{2})$/);
+          if (baseMatch) {
+            return {
+              type: "base",
+              raw: clean,
+              model: baseMatch[1],
+              color: baseMatch[2],
+              sourceView: null
+            };
+          }
+
+          return null;
         },
         mapView(sourceView) {
-          const hiddenMap = {
-            "002": 1,
-            "001": 2,
-            "003": 3,
-            "004": 4,
-            "023": 5,
-            "021": 6,
-            "030": 7
-          };
-          return hiddenMap[sourceView] ?? null;
+          return this.hiddenMap[sourceView] ?? null;
+        },
+        getCandidateViews(parsed) {
+          if (parsed.type === "exact" && parsed.sourceView) {
+            return [parsed.sourceView];
+          }
+          return [...this.candidateViews];
+        },
+        buildCode(model, color, sourceView) {
+          return `${model}-${color}-${sourceView}`;
         }
       }
     };
@@ -545,7 +571,7 @@
         const active = brand.id === state.activeBrand ? "active" : "";
         return `
           <button class="brand-btn ${active}" data-brand="${brand.id}">
-            <span class="brand-icon">MNG</span>
+            <span class="brand-icon">${brand.iconText}</span>
             <span>${escapeHtml(brand.label)}</span>
           </button>
         `;
@@ -597,7 +623,7 @@
         "modelocolormango",
         "codigomango",
         "mango",
-        "modelomango"
+        "referenciamango"
       ];
 
       const skuCandidates = [
@@ -709,7 +735,34 @@
       setProgress(0);
     }
 
-    function processRows() {
+    function probeImage(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        let done = false;
+
+        const finish = (result) => {
+          if (done) return;
+          done = true;
+          resolve(result);
+        };
+
+        const timer = setTimeout(() => finish(false), 10000);
+
+        img.onload = () => {
+          clearTimeout(timer);
+          finish(true);
+        };
+
+        img.onerror = () => {
+          clearTimeout(timer);
+          finish(false);
+        };
+
+        img.src = url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now();
+      });
+    }
+
+    async function processRows() {
       const brand = BRANDS[state.activeBrand];
       if (!brand) return;
 
@@ -718,54 +771,89 @@
         return;
       }
 
+      els.btnProcess.disabled = true;
+      els.btnDownloadZip.disabled = true;
+
       state.items = [];
       state.errors = [];
       state.manifestText = "";
 
       const usedNames = new Map();
+      const totalRows = state.rawRows.length;
 
-      state.rawRows.forEach(row => {
+      setProgress(0);
+      setStatus(`Buscando imágenes... 0/${totalRows}`);
+
+      for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
+        const row = state.rawRows[rowIndex];
         const mangoCode = String(row.mangoCode || "").trim();
         const skuFalabella = String(row.skuFalabella || "").trim();
 
         if (!mangoCode || !skuFalabella) {
           state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
-          return;
+          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+          setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
+          continue;
         }
 
         const parsed = brand.parseCode(mangoCode);
+
         if (!parsed) {
           state.errors.push(`Fila ${row.rowNumber}: código inválido "${mangoCode}".`);
-          return;
+          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+          setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
+          continue;
         }
 
-        const targetView = brand.mapView(parsed.sourceView);
-        if (!targetView) {
-          state.errors.push(`Fila ${row.rowNumber}: vista "${parsed.sourceView}" sin regla.`);
-          return;
+        const candidateViews = brand.getCandidateViews(parsed);
+        let foundForRow = 0;
+
+        for (const sourceView of candidateViews) {
+          const targetView = brand.mapView(sourceView);
+          if (!targetView) continue;
+
+          const fullCode = brand.buildCode(parsed.model, parsed.color, sourceView);
+          const probeUrl = brand.buildUrl(fullCode, 120);
+          const exists = await probeImage(probeUrl);
+
+          if (!exists) continue;
+
+          const outputFilename = `${skuFalabella}_${targetView}.jpg`;
+          const duplicateKey = outputFilename.toLowerCase();
+
+          if (usedNames.has(duplicateKey)) {
+            state.errors.push(`Fila ${row.rowNumber}: nombre repetido "${outputFilename}".`);
+            continue;
+          }
+
+          usedNames.set(duplicateKey, true);
+
+          state.items.push({
+            rowNumber: row.rowNumber,
+            inputCode: mangoCode,
+            mangoCode: fullCode,
+            skuFalabella,
+            sourceView,
+            targetView,
+            outputFilename,
+            imageUrl: brand.buildUrl(fullCode, 2048),
+            status: "ready"
+          });
+
+          foundForRow++;
         }
 
-        const outputFilename = `${skuFalabella}_${targetView}.jpg`;
-        const duplicateKey = outputFilename.toLowerCase();
-
-        if (usedNames.has(duplicateKey)) {
-          state.errors.push(`Fila ${row.rowNumber}: nombre repetido "${outputFilename}".`);
-          return;
+        if (foundForRow === 0) {
+          if (parsed.type === "exact") {
+            state.errors.push(`Fila ${row.rowNumber}: no existe la vista "${parsed.sourceView}" para "${parsed.model}-${parsed.color}".`);
+          } else {
+            state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${mangoCode}".`);
+          }
         }
 
-        usedNames.set(duplicateKey, true);
-
-        state.items.push({
-          rowNumber: row.rowNumber,
-          mangoCode,
-          skuFalabella,
-          sourceView: parsed.sourceView,
-          targetView,
-          outputFilename,
-          imageUrl: brand.buildUrl(mangoCode),
-          status: "ready"
-        });
-      });
+        setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+        setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
+      }
 
       state.items.sort((a, b) => {
         if (a.skuFalabella === b.skuFalabella) return a.targetView - b.targetView;
@@ -781,12 +869,13 @@
       renderErrors();
 
       if (state.items.length) {
-        setStatus(`${state.items.length} imagen(es) lista(s).`);
+        setStatus(`${state.items.length} imagen(es) encontrada(s).`);
       } else {
-        setStatus("No hubo resultados válidos.");
+        setStatus("No se encontraron imágenes.");
       }
 
-      setProgress(0);
+      els.btnProcess.disabled = false;
+      els.btnDownloadZip.disabled = state.items.length === 0;
     }
 
     function buildManifestText() {
@@ -794,6 +883,7 @@
         return [
           `Fila:${item.rowNumber}`,
           `Marca:${state.activeBrand}`,
+          `Entrada:${item.inputCode}`,
           `Mango:${item.mangoCode}`,
           `SKU:${item.skuFalabella}`,
           `VistaOrigen:${item.sourceView}`,
@@ -819,7 +909,7 @@
       }
 
       if (!state.items.length) {
-        els.resultsPanel.innerHTML = '<div class="empty">No hay filas listas todavía.</div>';
+        els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
         return;
       }
 
@@ -832,6 +922,7 @@
                 <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
               </div>
             </td>
+            <td class="mono">${escapeHtml(item.inputCode)}</td>
             <td class="mono">${escapeHtml(item.mangoCode)}</td>
             <td class="mono">${escapeHtml(item.skuFalabella)}</td>
             <td class="mono">${escapeHtml(item.outputFilename)}</td>
@@ -839,7 +930,7 @@
             <td>
               <div class="row-actions">
                 <button class="btn btn-secondary" data-open="${escapeHtml(item.imageUrl)}">Abrir</button>
-                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}">Descargar</button>
+                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}" data-code="${escapeHtml(item.mangoCode)}">Descargar</button>
               </div>
             </td>
           </tr>
@@ -853,7 +944,8 @@
               <tr>
                 <th>Fila</th>
                 <th>Preview</th>
-                <th>Mango</th>
+                <th>Entrada</th>
+                <th>Mango encontrado</th>
                 <th>SKU Falabella</th>
                 <th>Archivo final</th>
                 <th>Estado</th>
@@ -875,7 +967,8 @@
       els.resultsPanel.querySelectorAll("[data-download]").forEach(btn => {
         btn.addEventListener("click", async () => {
           const rowNumber = Number(btn.getAttribute("data-download"));
-          const item = state.items.find(x => x.rowNumber === rowNumber);
+          const mangoCode = btn.getAttribute("data-code");
+          const item = state.items.find(x => x.rowNumber === rowNumber && x.mangoCode === mangoCode);
           if (!item) return;
           await downloadSingle(item);
         });
