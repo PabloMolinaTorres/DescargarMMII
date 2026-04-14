@@ -519,7 +519,8 @@
       items: [],
       errors: [],
       manifestText: "",
-      sourceFileName: ""
+      sourceFileName: "",
+      rowResults: []
     };
 
     const els = {
@@ -657,10 +658,11 @@
         revokePreviewUrls();
 
         state.rawRows = rows;
-        state.sourceFileName = file.name;
         state.items = [];
         state.errors = [];
         state.manifestText = "";
+        state.sourceFileName = file.name;
+        state.rowResults = [];
 
         els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
         renderSummary();
@@ -731,6 +733,7 @@
       state.errors = [];
       state.manifestText = "";
       state.sourceFileName = "";
+      state.rowResults = [];
       renderSummary();
       renderResults();
       renderErrors();
@@ -778,6 +781,7 @@
       state.items = [];
       state.errors = [];
       state.manifestText = "";
+      state.rowResults = [];
 
       const usedNames = new Set();
       const totalRows = state.rawRows.length;
@@ -790,8 +794,17 @@
         const inputCode = String(row.mangoCode || "").trim();
         const skuFalabella = String(row.skuFalabella || "").trim();
 
+        const rowResult = {
+          rowNumber: row.rowNumber,
+          inputCode,
+          skuFalabella,
+          downloadedFiles: [],
+          ok: false
+        };
+
         if (!inputCode || !skuFalabella) {
           state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
+          state.rowResults.push(rowResult);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
           setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
           continue;
@@ -801,6 +814,7 @@
 
         if (!parsed) {
           state.errors.push(`Fila ${row.rowNumber}: código inválido "${inputCode}".`);
+          state.rowResults.push(rowResult);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
           setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
           continue;
@@ -834,6 +848,7 @@
             state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
           }
 
+          state.rowResults.push(rowResult);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
           setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
           continue;
@@ -857,7 +872,11 @@
           item.previewUrl = URL.createObjectURL(item.blob);
 
           state.items.push(item);
+          rowResult.downloadedFiles.push(outputFilename);
         });
+
+        rowResult.ok = rowResult.downloadedFiles.length > 0;
+        state.rowResults.push(rowResult);
 
         setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
         setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
@@ -887,19 +906,39 @@
     }
 
     function buildManifestText() {
-      return state.items.map(item => {
-        return [
-          `Fila:${item.rowNumber}`,
-          `Marca:${state.activeBrand}`,
-          `Entrada:${item.inputCode}`,
-          `Mango:${item.mangoCode}`,
-          `SKU:${item.skuFalabella}`,
-          `VistaOrigen:${item.sourceView}`,
-          `VistaFinal:${item.targetView}`,
-          `Archivo:${item.outputFilename}`,
-          `URL:${item.imageUrl}`
-        ].join(" | ");
-      }).join("\n");
+      const okRows = state.rowResults.filter(row => row.ok);
+      const badRows = state.rowResults.filter(row => !row.ok);
+
+      const lines = [];
+
+      lines.push("DESCARGADO CORRECTAMENTE");
+      lines.push("");
+
+      if (okRows.length) {
+        okRows.forEach(row => {
+          lines.push(
+            `Fila ${row.rowNumber} | ${row.inputCode} | SKU ${row.skuFalabella} | ${row.downloadedFiles.join(", ")}`
+          );
+        });
+      } else {
+        lines.push("Sin registros.");
+      }
+
+      lines.push("");
+      lines.push("NO DESCARGO");
+      lines.push("");
+
+      if (badRows.length) {
+        badRows.forEach(row => {
+          lines.push(
+            `Fila ${row.rowNumber} | ${row.inputCode || "(sin código)"} | SKU ${row.skuFalabella || "(sin SKU)"}`
+          );
+        });
+      } else {
+        lines.push("Sin registros.");
+      }
+
+      return lines.join("\n");
     }
 
     function renderSummary() {
