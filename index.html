@@ -276,7 +276,7 @@
     table{
       width:100%;
       border-collapse:collapse;
-      min-width:1100px;
+      min-width:1120px;
     }
 
     th, td{
@@ -470,16 +470,7 @@
         id: "mango",
         label: "Mango",
         iconText: "MNG",
-        candidateViews: ["002", "001", "003", "004", "023", "021", "030"],
-        hiddenMap: {
-          "002": 1,
-          "001": 2,
-          "003": 3,
-          "004": 4,
-          "023": 5,
-          "021": 6,
-          "030": 7
-        },
+        candidateViews: ["002", "001", "003", "004", "023", "021", "030", "010", "008"],
         buildUrl(code, width = 2048) {
           return `https://media.mango.com/is/image/punto/${code}?wid=${width}`;
         },
@@ -509,9 +500,6 @@
           }
 
           return null;
-        },
-        mapView(sourceView) {
-          return this.hiddenMap[sourceView] ?? null;
         },
         getCandidateViews(parsed) {
           if (parsed.type === "exact" && parsed.sourceView) {
@@ -564,6 +552,16 @@
       els.btnClear.addEventListener("click", clearAll);
       els.btnProcess.addEventListener("click", processRows);
       els.btnDownloadZip.addEventListener("click", downloadZip);
+    }
+
+    function revokePreviewUrls() {
+      state.items.forEach(item => {
+        if (item.previewUrl) {
+          try {
+            URL.revokeObjectURL(item.previewUrl);
+          } catch (_) {}
+        }
+      });
     }
 
     function renderBrands() {
@@ -655,6 +653,9 @@
 
       try {
         const rows = await parseExcelFile(file);
+
+        revokePreviewUrls();
+
         state.rawRows = rows;
         state.sourceFileName = file.name;
         state.items = [];
@@ -721,6 +722,8 @@
     }
 
     function clearAll() {
+      revokePreviewUrls();
+
       els.excelFile.value = "";
       els.fileMeta.textContent = "Sin archivo cargado.";
       state.rawRows = [];
@@ -735,31 +738,27 @@
       setProgress(0);
     }
 
-    function probeImage(url) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        let done = false;
+    async function fetchBlobIfExists(url) {
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          mode: "cors",
+          cache: "no-store"
+        });
 
-        const finish = (result) => {
-          if (done) return;
-          done = true;
-          resolve(result);
-        };
+        if (!response.ok) return null;
 
-        const timer = setTimeout(() => finish(false), 10000);
+        return await response.blob();
+      } catch (error) {
+        return null;
+      }
+    }
 
-        img.onload = () => {
-          clearTimeout(timer);
-          finish(true);
-        };
-
-        img.onerror = () => {
-          clearTimeout(timer);
-          finish(false);
-        };
-
-        img.src = url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now();
-      });
+    function guessExtension(blob) {
+      const type = String(blob?.type || "").toLowerCase();
+      if (type.includes("png")) return "png";
+      if (type.includes("webp")) return "webp";
+      return "jpg";
     }
 
     async function processRows() {
@@ -774,15 +773,17 @@
       els.btnProcess.disabled = true;
       els.btnDownloadZip.disabled = true;
 
+      revokePreviewUrls();
+
       state.items = [];
       state.errors = [];
       state.manifestText = "";
 
-      const usedNames = new Map();
+      const usedNames = new Set();
       const totalRows = state.rawRows.length;
 
       setProgress(0);
-      setStatus(`Buscando imágenes... 0/${totalRows}`);
+      setStatus(`Buscando y descargando... 0/${totalRows}`);
 
       for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
         const row = state.rawRows[rowIndex];
@@ -792,7 +793,7 @@
         if (!inputCode || !skuFalabella) {
           state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
+          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
           continue;
         }
 
@@ -801,58 +802,65 @@
         if (!parsed) {
           state.errors.push(`Fila ${row.rowNumber}: código inválido "${inputCode}".`);
           setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
+          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
           continue;
         }
 
         const candidateViews = brand.getCandidateViews(parsed);
-        let foundForRow = 0;
+        const foundItemsForRow = [];
 
         for (const sourceView of candidateViews) {
-          const targetView = brand.mapView(sourceView);
-          if (!targetView) continue;
-
           const fullCode = brand.buildCode(parsed.model, parsed.color, sourceView);
-          const probeUrl = brand.buildUrl(fullCode, 120);
-          const exists = await probeImage(probeUrl);
+          const imageUrl = brand.buildUrl(fullCode, 2048);
+          const blob = await fetchBlobIfExists(imageUrl);
 
-          if (!exists) continue;
+          if (!blob) continue;
 
-          const outputFilename = `${skuFalabella}_${targetView}.jpg`;
-          const duplicateKey = outputFilename.toLowerCase();
-
-          if (usedNames.has(duplicateKey)) {
-            state.errors.push(`Fila ${row.rowNumber}: nombre repetido "${outputFilename}".`);
-            continue;
-          }
-
-          usedNames.set(duplicateKey, true);
-
-          state.items.push({
+          foundItemsForRow.push({
             rowNumber: row.rowNumber,
             inputCode,
             mangoCode: fullCode,
             skuFalabella,
             sourceView,
-            targetView,
-            outputFilename,
-            imageUrl: brand.buildUrl(fullCode, 2048),
-            status: "ready"
+            imageUrl,
+            blob
           });
-
-          foundForRow++;
         }
 
-        if (foundForRow === 0) {
+        if (foundItemsForRow.length === 0) {
           if (parsed.type === "exact") {
             state.errors.push(`Fila ${row.rowNumber}: no existe la vista "${parsed.sourceView}" para "${parsed.model}-${parsed.color}".`);
           } else {
             state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
           }
+
+          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+          continue;
         }
 
+        foundItemsForRow.forEach((item, index) => {
+          const finalView = index + 1;
+          const ext = guessExtension(item.blob);
+          const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
+          const duplicateKey = outputFilename.toLowerCase();
+
+          if (usedNames.has(duplicateKey)) {
+            state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
+            return;
+          }
+
+          usedNames.add(duplicateKey);
+
+          item.targetView = finalView;
+          item.outputFilename = outputFilename;
+          item.previewUrl = URL.createObjectURL(item.blob);
+
+          state.items.push(item);
+        });
+
         setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-        setStatus(`Buscando imágenes... ${rowIndex + 1}/${totalRows}`);
+        setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
       }
 
       state.items.sort((a, b) => {
@@ -869,7 +877,7 @@
       renderErrors();
 
       if (state.items.length) {
-        setStatus(`${state.items.length} imagen(es) encontrada(s).`);
+        setStatus(`${state.items.length} imagen(es) lista(s) en memoria.`);
       } else {
         setStatus("No se encontraron imágenes.");
       }
@@ -919,11 +927,12 @@
             <td>${item.rowNumber}</td>
             <td>
               <div class="thumb">
-                <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
+                <img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
               </div>
             </td>
             <td class="mono">${escapeHtml(item.inputCode)}</td>
             <td class="mono">${escapeHtml(item.mangoCode)}</td>
+            <td class="mono">${escapeHtml(item.sourceView)}</td>
             <td class="mono">${escapeHtml(item.skuFalabella)}</td>
             <td class="mono">${escapeHtml(item.outputFilename)}</td>
             <td><span class="chip ok">Lista</span></td>
@@ -946,6 +955,7 @@
                 <th>Preview</th>
                 <th>Entrada</th>
                 <th>Mango encontrado</th>
+                <th>Vista origen</th>
                 <th>SKU Falabella</th>
                 <th>Archivo final</th>
                 <th>Estado</th>
@@ -965,12 +975,12 @@
       });
 
       els.resultsPanel.querySelectorAll("[data-download]").forEach(btn => {
-        btn.addEventListener("click", async () => {
+        btn.addEventListener("click", () => {
           const rowNumber = Number(btn.getAttribute("data-download"));
           const mangoCode = btn.getAttribute("data-code");
           const item = state.items.find(x => x.rowNumber === rowNumber && x.mangoCode === mangoCode);
           if (!item) return;
-          await downloadSingle(item);
+          downloadSingle(item);
         });
       });
     }
@@ -991,40 +1001,12 @@
       `;
     }
 
-    async function fetchBlob(url) {
-      const response = await fetch(url, {
-        method: "GET",
-        mode: "cors",
-        cache: "no-store"
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.blob();
-    }
-
-    function guessExtension(blob) {
-      const type = String(blob?.type || "").toLowerCase();
-      if (type.includes("png")) return "png";
-      if (type.includes("webp")) return "webp";
-      return "jpg";
-    }
-
-    async function downloadSingle(item) {
+    function downloadSingle(item) {
       try {
         setStatus(`Descargando ${item.outputFilename}...`);
-        setProgress(20);
-
-        const blob = await fetchBlob(item.imageUrl);
-        const ext = guessExtension(blob);
-        const finalName = item.outputFilename.replace(/\.jpg$/i, `.${ext}`);
-
-        saveAs(blob, finalName);
-
         setProgress(100);
-        setStatus(`Descarga completada: ${finalName}`);
+        saveAs(item.blob, item.outputFilename);
+        setStatus(`Descarga completada: ${item.outputFilename}`);
       } catch (error) {
         console.error(error);
         setProgress(0);
@@ -1043,28 +1025,18 @@
 
       try {
         const zip = new JSZip();
-        let done = 0;
-        let failed = 0;
         const total = state.items.length;
 
         setProgress(0);
-        setStatus(`Preparando ZIP... 0/${total}`);
+        setStatus(`Armando ZIP... 0/${total}`);
 
-        for (const item of state.items) {
-          try {
-            const blob = await fetchBlob(item.imageUrl);
-            const ext = guessExtension(blob);
-            const finalName = item.outputFilename.replace(/\.jpg$/i, `.${ext}`);
-            zip.file(finalName, blob);
-          } catch (error) {
-            console.error(error);
-            failed++;
-            state.errors.push(`No se pudo descargar ${item.mangoCode}.`);
-          }
+        for (let i = 0; i < state.items.length; i++) {
+          const item = state.items[i];
+          zip.file(item.outputFilename, item.blob);
 
-          done++;
+          const done = i + 1;
           setProgress(Math.round((done / total) * 100));
-          setStatus(`Preparando ZIP... ${done}/${total}`);
+          setStatus(`Armando ZIP... ${done}/${total}`);
         }
 
         if (state.manifestText) {
@@ -1075,14 +1047,7 @@
         const zipName = buildZipName();
 
         saveAs(zipBlob, zipName);
-        renderSummary();
-        renderErrors();
-
-        if (failed > 0) {
-          setStatus(`ZIP generado con ${failed} falla(s).`);
-        } else {
-          setStatus(`ZIP generado: ${zipName}`);
-        }
+        setStatus(`ZIP generado: ${zipName}`);
       } catch (error) {
         console.error(error);
         setProgress(0);
