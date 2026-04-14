@@ -19,7 +19,6 @@
       --muted:#7a7f87;
       --border:#e5e7eb;
       --danger:#d93025;
-      --warning:#d97706;
       --ok:#15803d;
       --shadow:0 10px 30px rgba(0,0,0,.06);
       --radius:16px;
@@ -96,8 +95,8 @@
     }
 
     .brand-icon{
-      width:34px;
-      height:34px;
+      width:38px;
+      height:38px;
       border-radius:10px;
       background:#fff;
       border:1px solid rgba(0,0,0,.08);
@@ -105,17 +104,15 @@
       align-items:center;
       justify-content:center;
       flex-shrink:0;
-      overflow:hidden;
+      font-size:11px;
+      font-weight:700;
+      color:#111;
+      letter-spacing:.08em;
+      line-height:1;
     }
 
     .brand-btn.active .brand-icon{
       border-color:rgba(255,255,255,.35);
-    }
-
-    .brand-icon svg{
-      width:28px;
-      height:28px;
-      display:block;
     }
 
     .content{
@@ -183,12 +180,6 @@
       background:#fff;
       color:var(--text);
       border:1px solid var(--border);
-    }
-
-    .btn-danger{
-      background:#fff3f2;
-      color:var(--danger);
-      border:1px solid #ffd5d1;
     }
 
     .panel{
@@ -345,12 +336,6 @@
       border-color:#cce9d3;
     }
 
-    .chip.err{
-      color:var(--danger);
-      background:#fff5f4;
-      border-color:#f7c9c3;
-    }
-
     .mono{
       font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       word-break:break-word;
@@ -436,7 +421,6 @@
 
         <div class="actions">
           <button class="btn btn-secondary" id="btnDownloadTemplate">Descargar plantilla</button>
-          <button class="btn btn-secondary" id="btnDownloadExample">Descargar ejemplo</button>
           <button class="btn btn-secondary" id="btnClear">Limpiar</button>
           <button class="btn btn-primary" id="btnProcess">Procesar</button>
           <button class="btn btn-primary" id="btnDownloadZip" disabled>Descargar ZIP</button>
@@ -485,18 +469,12 @@
       mango: {
         id: "mango",
         label: "Mango",
-        icon: `
-          <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect x="0" y="0" width="64" height="64" rx="10" fill="#ffffff"/>
-            <text x="32" y="39" text-anchor="middle" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="#111111">MNG</text>
-          </svg>
-        `,
         buildUrl(code) {
-          return \`https://media.mango.com/is/image/punto/\${code}?wid=2048\`;
+          return `https://media.mango.com/is/image/punto/${code}?wid=2048`;
         },
         parseCode(code) {
           const clean = String(code || "").trim();
-          const match = clean.match(/^(.+)-(\\d{2})-(\\d{3})$/);
+          const match = clean.match(/^(.+)-(\d{2})-(\d{3})$/);
           if (!match) return null;
 
           return {
@@ -521,16 +499,6 @@
       }
     };
 
-    const EXAMPLE_ROWS = [
-      { "MODELO COLOR MANGO": "27055968-32-002", "SKU FALABELLA": "12345678" },
-      { "MODELO COLOR MANGO": "27055968-32-001", "SKU FALABELLA": "12345678" },
-      { "MODELO COLOR MANGO": "27055968-32-003", "SKU FALABELLA": "12345678" },
-      { "MODELO COLOR MANGO": "27055968-32-004", "SKU FALABELLA": "12345678" },
-      { "MODELO COLOR MANGO": "27055968-32-023", "SKU FALABELLA": "12345678" },
-      { "MODELO COLOR MANGO": "27055968-32-021", "SKU FALABELLA": "12345678" },
-      { "MODELO COLOR MANGO": "27055968-32-030", "SKU FALABELLA": "12345678" }
-    ];
-
     const state = {
       activeBrand: "mango",
       rawRows: [],
@@ -546,7 +514,6 @@
       excelFile: document.getElementById("excelFile"),
       fileMeta: document.getElementById("fileMeta"),
       btnDownloadTemplate: document.getElementById("btnDownloadTemplate"),
-      btnDownloadExample: document.getElementById("btnDownloadExample"),
       btnClear: document.getElementById("btnClear"),
       btnProcess: document.getElementById("btnProcess"),
       btnDownloadZip: document.getElementById("btnDownloadZip"),
@@ -568,7 +535,6 @@
     function bindEvents() {
       els.excelFile.addEventListener("change", handleExcelChange);
       els.btnDownloadTemplate.addEventListener("click", downloadTemplate);
-      els.btnDownloadExample.addEventListener("click", downloadExample);
       els.btnClear.addEventListener("click", clearAll);
       els.btnProcess.addEventListener("click", processRows);
       els.btnDownloadZip.addEventListener("click", downloadZip);
@@ -579,7 +545,7 @@
         const active = brand.id === state.activeBrand ? "active" : "";
         return `
           <button class="brand-btn ${active}" data-brand="${brand.id}">
-            <span class="brand-icon">${brand.icon}</span>
+            <span class="brand-icon">MNG</span>
             <span>${escapeHtml(brand.label)}</span>
           </button>
         `;
@@ -592,7 +558,7 @@
           state.activeBrand = brandId;
           renderBrands();
           els.activeBrandLabel.textContent = BRANDS[brandId].label;
-          setStatus(\`\${BRANDS[brandId].label} activo.\`);
+          setStatus(`${BRANDS[brandId].label} activo.`);
         });
       });
     }
@@ -618,7 +584,7 @@
     function normalizeHeader(value) {
       return String(value || "")
         .normalize("NFD")
-        .replace(/[\\u0300-\\u036f]/g, "")
+        .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
     }
@@ -627,11 +593,11 @@
       const normalized = firstRow.map(normalizeHeader);
 
       const mangoCandidates = [
+        "modelomango",
         "modelocolormango",
         "codigomango",
         "mango",
-        "modelomango",
-        "referenciamango"
+        "modelomango"
       ];
 
       const skuCandidates = [
@@ -669,11 +635,11 @@
         state.errors = [];
         state.manifestText = "";
 
-        els.fileMeta.textContent = \`\${file.name} · \${rows.length} fila(s)\`;
+        els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
         renderSummary();
         renderResults();
         renderErrors();
-        setStatus(\`\${rows.length} fila(s) cargada(s) desde \${file.name}.\`);
+        setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
         setProgress(0);
       } catch (error) {
         console.error(error);
@@ -711,32 +677,21 @@
     }
 
     function downloadTemplate() {
-      const ws = XLSX.utils.json_to_sheet([
-        { "MODELO COLOR MANGO": "", "SKU FALABELLA": "" }
-      ]);
+      try {
+        const data = [
+          { "Modelo mango": "", "Sku falabella": "" }
+        ];
 
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+        XLSX.writeFile(wb, "plantilla-mango-falabella.xlsx");
 
-      const arrayBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([arrayBuffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      });
-
-      saveAs(blob, "plantilla-mango-falabella.xlsx");
-    }
-
-    function downloadExample() {
-      const ws = XLSX.utils.json_to_sheet(EXAMPLE_ROWS);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Ejemplo");
-
-      const arrayBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([arrayBuffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      });
-
-      saveAs(blob, "ejemplo-mango-falabella.xlsx");
+        setStatus("Plantilla descargada.");
+      } catch (error) {
+        console.error(error);
+        setStatus("No se pudo descargar la plantilla.");
+      }
     }
 
     function clearAll() {
@@ -774,27 +729,27 @@
         const skuFalabella = String(row.skuFalabella || "").trim();
 
         if (!mangoCode || !skuFalabella) {
-          state.errors.push(\`Fila \${row.rowNumber}: faltan datos.\`);
+          state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
           return;
         }
 
         const parsed = brand.parseCode(mangoCode);
         if (!parsed) {
-          state.errors.push(\`Fila \${row.rowNumber}: código inválido "\${mangoCode}".\`);
+          state.errors.push(`Fila ${row.rowNumber}: código inválido "${mangoCode}".`);
           return;
         }
 
         const targetView = brand.mapView(parsed.sourceView);
         if (!targetView) {
-          state.errors.push(\`Fila \${row.rowNumber}: vista "\${parsed.sourceView}" sin regla.\`);
+          state.errors.push(`Fila ${row.rowNumber}: vista "${parsed.sourceView}" sin regla.`);
           return;
         }
 
-        const outputFilename = \`\${skuFalabella}_\${targetView}.jpg\`;
+        const outputFilename = `${skuFalabella}_${targetView}.jpg`;
         const duplicateKey = outputFilename.toLowerCase();
 
         if (usedNames.has(duplicateKey)) {
-          state.errors.push(\`Fila \${row.rowNumber}: nombre repetido "\${outputFilename}".\`);
+          state.errors.push(`Fila ${row.rowNumber}: nombre repetido "${outputFilename}".`);
           return;
         }
 
@@ -826,7 +781,7 @@
       renderErrors();
 
       if (state.items.length) {
-        setStatus(\`\${state.items.length} imagen(es) lista(s).\`);
+        setStatus(`${state.items.length} imagen(es) lista(s).`);
       } else {
         setStatus("No hubo resultados válidos.");
       }
@@ -837,16 +792,16 @@
     function buildManifestText() {
       return state.items.map(item => {
         return [
-          \`Fila:\${item.rowNumber}\`,
-          \`Marca:\${state.activeBrand}\`,
-          \`Mango:\${item.mangoCode}\`,
-          \`SKU:\${item.skuFalabella}\`,
-          \`VistaOrigen:\${item.sourceView}\`,
-          \`VistaFinal:\${item.targetView}\`,
-          \`Archivo:\${item.outputFilename}\`,
-          \`URL:\${item.imageUrl}\`
+          `Fila:${item.rowNumber}`,
+          `Marca:${state.activeBrand}`,
+          `Mango:${item.mangoCode}`,
+          `SKU:${item.skuFalabella}`,
+          `VistaOrigen:${item.sourceView}`,
+          `VistaFinal:${item.targetView}`,
+          `Archivo:${item.outputFilename}`,
+          `URL:${item.imageUrl}`
         ].join(" | ");
-      }).join("\\n");
+      }).join("\n");
     }
 
     function renderSummary() {
@@ -869,29 +824,29 @@
       }
 
       const rowsHtml = state.items.map(item => {
-        return \`
+        return `
           <tr>
-            <td>\${item.rowNumber}</td>
+            <td>${item.rowNumber}</td>
             <td>
               <div class="thumb">
-                <img src="\${escapeHtml(item.imageUrl)}" alt="\${escapeHtml(item.outputFilename)}" loading="lazy">
+                <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
               </div>
             </td>
-            <td class="mono">\${escapeHtml(item.mangoCode)}</td>
-            <td class="mono">\${escapeHtml(item.skuFalabella)}</td>
-            <td class="mono">\${escapeHtml(item.outputFilename)}</td>
+            <td class="mono">${escapeHtml(item.mangoCode)}</td>
+            <td class="mono">${escapeHtml(item.skuFalabella)}</td>
+            <td class="mono">${escapeHtml(item.outputFilename)}</td>
             <td><span class="chip ok">Lista</span></td>
             <td>
               <div class="row-actions">
-                <button class="btn btn-secondary" data-open="\${escapeHtml(item.imageUrl)}">Abrir</button>
-                <button class="btn btn-primary" data-download="\${escapeHtml(item.rowNumber)}">Descargar</button>
+                <button class="btn btn-secondary" data-open="${escapeHtml(item.imageUrl)}">Abrir</button>
+                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}">Descargar</button>
               </div>
             </td>
           </tr>
-        \`;
+        `;
       }).join("");
 
-      els.resultsPanel.innerHTML = \`
+      els.resultsPanel.innerHTML = `
         <div class="table-wrap">
           <table>
             <thead>
@@ -905,10 +860,10 @@
                 <th>Acciones</th>
               </tr>
             </thead>
-            <tbody>\${rowsHtml}</tbody>
+            <tbody>${rowsHtml}</tbody>
           </table>
         </div>
-      \`;
+      `;
 
       els.resultsPanel.querySelectorAll("[data-open]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -933,14 +888,14 @@
         return;
       }
 
-      els.errorsPanel.innerHTML = \`
+      els.errorsPanel.innerHTML = `
         <section class="errors">
           <h3>Errores</h3>
           <ol>
-            \${state.errors.map(err => \`<li>\${escapeHtml(err)}</li>\`).join("")}
+            ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
           </ol>
         </section>
-      \`;
+      `;
     }
 
     async function fetchBlob(url) {
@@ -951,7 +906,7 @@
       });
 
       if (!response.ok) {
-        throw new Error(\`HTTP \${response.status}\`);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       return await response.blob();
@@ -966,21 +921,21 @@
 
     async function downloadSingle(item) {
       try {
-        setStatus(\`Descargando \${item.outputFilename}...\`);
+        setStatus(`Descargando ${item.outputFilename}...`);
         setProgress(20);
 
         const blob = await fetchBlob(item.imageUrl);
         const ext = guessExtension(blob);
-        const finalName = item.outputFilename.replace(/\\.jpg$/i, \`.\${ext}\`);
+        const finalName = item.outputFilename.replace(/\.jpg$/i, `.${ext}`);
 
         saveAs(blob, finalName);
 
         setProgress(100);
-        setStatus(\`Descarga completada: \${finalName}\`);
+        setStatus(`Descarga completada: ${finalName}`);
       } catch (error) {
         console.error(error);
         setProgress(0);
-        setStatus(\`No se pudo descargar \${item.outputFilename}.\`);
+        setStatus(`No se pudo descargar ${item.outputFilename}.`);
       }
     }
 
@@ -1000,23 +955,23 @@
         const total = state.items.length;
 
         setProgress(0);
-        setStatus(\`Preparando ZIP... 0/\${total}\`);
+        setStatus(`Preparando ZIP... 0/${total}`);
 
         for (const item of state.items) {
           try {
             const blob = await fetchBlob(item.imageUrl);
             const ext = guessExtension(blob);
-            const finalName = item.outputFilename.replace(/\\.jpg$/i, \`.\${ext}\`);
+            const finalName = item.outputFilename.replace(/\.jpg$/i, `.${ext}`);
             zip.file(finalName, blob);
           } catch (error) {
             console.error(error);
             failed++;
-            state.errors.push(\`No se pudo descargar \${item.mangoCode}.\`);
+            state.errors.push(`No se pudo descargar ${item.mangoCode}.`);
           }
 
           done++;
           setProgress(Math.round((done / total) * 100));
-          setStatus(\`Preparando ZIP... \${done}/\${total}\`);
+          setStatus(`Preparando ZIP... ${done}/${total}`);
         }
 
         if (state.manifestText) {
@@ -1031,9 +986,9 @@
         renderErrors();
 
         if (failed > 0) {
-          setStatus(\`ZIP generado con \${failed} falla(s).\`);
+          setStatus(`ZIP generado con ${failed} falla(s).`);
         } else {
-          setStatus(\`ZIP generado: \${zipName}\`);
+          setStatus(`ZIP generado: ${zipName}`);
         }
       } catch (error) {
         console.error(error);
@@ -1052,7 +1007,7 @@
       const DD = String(now.getDate()).padStart(2, "0");
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
-      return \`\${state.activeBrand}-\${YYYY}\${MM}\${DD}-\${hh}\${mm}.zip\`;
+      return `${state.activeBrand}-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
     }
 
     init();
