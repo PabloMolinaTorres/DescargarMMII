@@ -73,12 +73,15 @@
       background:#fff;
       color:var(--text);
       border-radius:14px;
-      padding:14px 16px;
+      padding:12px;
       text-align:left;
       cursor:pointer;
       font-size:14px;
       font-weight:700;
       transition:.15s ease;
+      display:flex;
+      align-items:center;
+      gap:12px;
     }
 
     .brand-btn:hover{
@@ -90,6 +93,29 @@
       background:var(--green);
       border-color:var(--green);
       color:#fff;
+    }
+
+    .brand-icon{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+      background:#fff;
+      border:1px solid rgba(0,0,0,.08);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-shrink:0;
+      overflow:hidden;
+    }
+
+    .brand-btn.active .brand-icon{
+      border-color:rgba(255,255,255,.35);
+    }
+
+    .brand-icon svg{
+      width:28px;
+      height:28px;
+      display:block;
     }
 
     .content{
@@ -180,8 +206,8 @@
 
     .controls{
       display:grid;
-      grid-template-columns:1fr auto auto;
-      gap:12px;
+      grid-template-columns:1fr;
+      gap:14px;
       align-items:end;
     }
 
@@ -191,10 +217,6 @@
       font-weight:700;
       margin-bottom:8px;
       color:#4a4f57;
-    }
-
-    .file-wrap{
-      position:relative;
     }
 
     .file-input{
@@ -207,32 +229,11 @@
       color:var(--text);
     }
 
-    .status-row{
-      display:grid;
-      grid-template-columns:repeat(4,minmax(0,1fr));
-      gap:12px;
-      margin-top:16px;
-    }
-
-    .stat{
-      border:1px solid var(--border);
-      border-radius:14px;
-      padding:14px;
-      background:#fff;
-    }
-
-    .stat .n{
-      display:block;
-      font-size:24px;
-      font-weight:700;
-      line-height:1;
-      margin-bottom:6px;
-    }
-
-    .stat .t{
-      display:block;
-      font-size:12px;
+    .file-meta{
+      margin-top:10px;
+      font-size:13px;
       color:var(--muted);
+      min-height:18px;
     }
 
     .status-line{
@@ -256,6 +257,25 @@
       width:0%;
       background:linear-gradient(90deg,var(--green),#b4df37);
       transition:width .2s ease;
+    }
+
+    .summary{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:14px;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:#fff;
+      border:1px solid var(--border);
+      font-size:12px;
+      font-weight:700;
     }
 
     .table-wrap{
@@ -323,12 +343,6 @@
       color:var(--ok);
       background:#f1fbf4;
       border-color:#cce9d3;
-    }
-
-    .chip.warn{
-      color:var(--warning);
-      background:#fff8ed;
-      border-color:#f3ddbe;
     }
 
     .chip.err{
@@ -401,17 +415,7 @@
 
       .brand-btn{
         width:auto;
-        min-width:140px;
-      }
-
-      .controls{
-        grid-template-columns:1fr;
-      }
-    }
-
-    @media (max-width: 700px){
-      .status-row{
-        grid-template-columns:repeat(2,minmax(0,1fr));
+        min-width:160px;
       }
     }
   </style>
@@ -431,7 +435,8 @@
         </div>
 
         <div class="actions">
-          <button class="btn btn-secondary" id="btnDownloadTemplate">Plantilla</button>
+          <button class="btn btn-secondary" id="btnDownloadTemplate">Descargar plantilla</button>
+          <button class="btn btn-secondary" id="btnDownloadExample">Descargar ejemplo</button>
           <button class="btn btn-secondary" id="btnClear">Limpiar</button>
           <button class="btn btn-primary" id="btnProcess">Procesar</button>
           <button class="btn btn-primary" id="btnDownloadZip" disabled>Descargar ZIP</button>
@@ -444,36 +449,14 @@
             <div class="field">
               <label for="excelFile">Excel</label>
               <input id="excelFile" class="file-input" type="file" accept=".xlsx,.xls,.csv" />
-            </div>
-
-            <div class="field">
-              <label>&nbsp;</label>
-              <button class="btn btn-secondary" id="btnLoadDemo">Demo</button>
-            </div>
-
-            <div class="field">
-              <label>&nbsp;</label>
-              <button class="btn btn-secondary" id="btnCopyManifest" disabled>Copiar manifiesto</button>
+              <div class="file-meta" id="fileMeta">Sin archivo cargado.</div>
             </div>
           </div>
 
-          <div class="status-row">
-            <div class="stat">
-              <span class="n" id="statRows">0</span>
-              <span class="t">Filas</span>
-            </div>
-            <div class="stat">
-              <span class="n" id="statReady">0</span>
-              <span class="t">Listas</span>
-            </div>
-            <div class="stat">
-              <span class="n" id="statErrors">0</span>
-              <span class="t">Errores</span>
-            </div>
-            <div class="stat">
-              <span class="n" id="statBrand">M</span>
-              <span class="t">Marca activa</span>
-            </div>
+          <div class="summary" id="summaryBar">
+            <div class="pill">Filas cargadas: <span id="summaryRows">0</span></div>
+            <div class="pill">Imágenes listas: <span id="summaryReady">0</span></div>
+            <div class="pill">Errores: <span id="summaryErrors">0</span></div>
           </div>
 
           <div class="status-line" id="statusLine">Esperando archivo...</div>
@@ -502,13 +485,18 @@
       mango: {
         id: "mango",
         label: "Mango",
-        short: "M",
+        icon: `
+          <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="0" y="0" width="64" height="64" rx="10" fill="#ffffff"/>
+            <text x="32" y="39" text-anchor="middle" font-size="18" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="#111111">MNG</text>
+          </svg>
+        `,
         buildUrl(code) {
-          return `https://media.mango.com/is/image/punto/${code}?wid=2048`;
+          return \`https://media.mango.com/is/image/punto/\${code}?wid=2048\`;
         },
         parseCode(code) {
           const clean = String(code || "").trim();
-          const match = clean.match(/^(.+)-(\d{2})-(\d{3})$/);
+          const match = clean.match(/^(.+)-(\\d{2})-(\\d{3})$/);
           if (!match) return null;
 
           return {
@@ -533,14 +521,14 @@
       }
     };
 
-    const DEMO_ROWS = [
-      { mangoCode: "27055968-32-002", skuFalabella: "12345678" },
-      { mangoCode: "27055968-32-001", skuFalabella: "12345678" },
-      { mangoCode: "27055968-32-003", skuFalabella: "12345678" },
-      { mangoCode: "27055968-32-004", skuFalabella: "12345678" },
-      { mangoCode: "27055968-32-023", skuFalabella: "12345678" },
-      { mangoCode: "27055968-32-021", skuFalabella: "12345678" },
-      { mangoCode: "27055968-32-030", skuFalabella: "12345678" }
+    const EXAMPLE_ROWS = [
+      { "MODELO COLOR MANGO": "27055968-32-002", "SKU FALABELLA": "12345678" },
+      { "MODELO COLOR MANGO": "27055968-32-001", "SKU FALABELLA": "12345678" },
+      { "MODELO COLOR MANGO": "27055968-32-003", "SKU FALABELLA": "12345678" },
+      { "MODELO COLOR MANGO": "27055968-32-004", "SKU FALABELLA": "12345678" },
+      { "MODELO COLOR MANGO": "27055968-32-023", "SKU FALABELLA": "12345678" },
+      { "MODELO COLOR MANGO": "27055968-32-021", "SKU FALABELLA": "12345678" },
+      { "MODELO COLOR MANGO": "27055968-32-030", "SKU FALABELLA": "12345678" }
     ];
 
     const state = {
@@ -556,16 +544,15 @@
       brandList: document.getElementById("brandList"),
       activeBrandLabel: document.getElementById("activeBrandLabel"),
       excelFile: document.getElementById("excelFile"),
+      fileMeta: document.getElementById("fileMeta"),
       btnDownloadTemplate: document.getElementById("btnDownloadTemplate"),
-      btnLoadDemo: document.getElementById("btnLoadDemo"),
+      btnDownloadExample: document.getElementById("btnDownloadExample"),
       btnClear: document.getElementById("btnClear"),
       btnProcess: document.getElementById("btnProcess"),
       btnDownloadZip: document.getElementById("btnDownloadZip"),
-      btnCopyManifest: document.getElementById("btnCopyManifest"),
-      statRows: document.getElementById("statRows"),
-      statReady: document.getElementById("statReady"),
-      statErrors: document.getElementById("statErrors"),
-      statBrand: document.getElementById("statBrand"),
+      summaryRows: document.getElementById("summaryRows"),
+      summaryReady: document.getElementById("summaryReady"),
+      summaryErrors: document.getElementById("summaryErrors"),
       statusLine: document.getElementById("statusLine"),
       progressBar: document.getElementById("progressBar"),
       resultsPanel: document.getElementById("resultsPanel"),
@@ -575,17 +562,16 @@
     function init() {
       renderBrands();
       bindEvents();
-      renderStats();
+      renderSummary();
     }
 
     function bindEvents() {
       els.excelFile.addEventListener("change", handleExcelChange);
       els.btnDownloadTemplate.addEventListener("click", downloadTemplate);
-      els.btnLoadDemo.addEventListener("click", loadDemo);
+      els.btnDownloadExample.addEventListener("click", downloadExample);
       els.btnClear.addEventListener("click", clearAll);
       els.btnProcess.addEventListener("click", processRows);
       els.btnDownloadZip.addEventListener("click", downloadZip);
-      els.btnCopyManifest.addEventListener("click", copyManifest);
     }
 
     function renderBrands() {
@@ -593,7 +579,8 @@
         const active = brand.id === state.activeBrand ? "active" : "";
         return `
           <button class="brand-btn ${active}" data-brand="${brand.id}">
-            ${escapeHtml(brand.label)}
+            <span class="brand-icon">${brand.icon}</span>
+            <span>${escapeHtml(brand.label)}</span>
           </button>
         `;
       }).join("");
@@ -604,9 +591,8 @@
           if (!BRANDS[brandId]) return;
           state.activeBrand = brandId;
           renderBrands();
-          renderStats();
           els.activeBrandLabel.textContent = BRANDS[brandId].label;
-          setStatus(`${BRANDS[brandId].label} activo.`);
+          setStatus(\`\${BRANDS[brandId].label} activo.\`);
         });
       });
     }
@@ -632,7 +618,7 @@
     function normalizeHeader(value) {
       return String(value || "")
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
     }
@@ -682,10 +668,12 @@
         state.items = [];
         state.errors = [];
         state.manifestText = "";
-        renderStats();
+
+        els.fileMeta.textContent = \`\${file.name} · \${rows.length} fila(s)\`;
+        renderSummary();
         renderResults();
         renderErrors();
-        setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
+        setStatus(\`\${rows.length} fila(s) cargada(s) desde \${file.name}.\`);
         setProgress(0);
       } catch (error) {
         console.error(error);
@@ -724,8 +712,7 @@
 
     function downloadTemplate() {
       const ws = XLSX.utils.json_to_sheet([
-        { "MODELO COLOR MANGO": "27055968-32-002", "SKU FALABELLA": "12345678" },
-        { "MODELO COLOR MANGO": "27055968-32-001", "SKU FALABELLA": "12345678" }
+        { "MODELO COLOR MANGO": "", "SKU FALABELLA": "" }
       ]);
 
       const wb = XLSX.utils.book_new();
@@ -739,32 +726,28 @@
       saveAs(blob, "plantilla-mango-falabella.xlsx");
     }
 
-    function loadDemo() {
-      state.rawRows = DEMO_ROWS.map((row, index) => ({
-        rowNumber: index + 1,
-        mangoCode: row.mangoCode,
-        skuFalabella: row.skuFalabella
-      }));
+    function downloadExample() {
+      const ws = XLSX.utils.json_to_sheet(EXAMPLE_ROWS);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Ejemplo");
 
-      state.sourceFileName = "demo";
-      state.items = [];
-      state.errors = [];
-      state.manifestText = "";
-      renderStats();
-      renderResults();
-      renderErrors();
-      setStatus("Demo cargada.");
-      setProgress(0);
+      const arrayBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([arrayBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+
+      saveAs(blob, "ejemplo-mango-falabella.xlsx");
     }
 
     function clearAll() {
       els.excelFile.value = "";
+      els.fileMeta.textContent = "Sin archivo cargado.";
       state.rawRows = [];
       state.items = [];
       state.errors = [];
       state.manifestText = "";
       state.sourceFileName = "";
-      renderStats();
+      renderSummary();
       renderResults();
       renderErrors();
       setStatus("Limpio.");
@@ -791,27 +774,27 @@
         const skuFalabella = String(row.skuFalabella || "").trim();
 
         if (!mangoCode || !skuFalabella) {
-          state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
+          state.errors.push(\`Fila \${row.rowNumber}: faltan datos.\`);
           return;
         }
 
         const parsed = brand.parseCode(mangoCode);
         if (!parsed) {
-          state.errors.push(`Fila ${row.rowNumber}: código inválido "${mangoCode}".`);
+          state.errors.push(\`Fila \${row.rowNumber}: código inválido "\${mangoCode}".\`);
           return;
         }
 
         const targetView = brand.mapView(parsed.sourceView);
         if (!targetView) {
-          state.errors.push(`Fila ${row.rowNumber}: vista "${parsed.sourceView}" sin regla.`);
+          state.errors.push(\`Fila \${row.rowNumber}: vista "\${parsed.sourceView}" sin regla.\`);
           return;
         }
 
-        const outputFilename = `${skuFalabella}_${targetView}.jpg`;
+        const outputFilename = \`\${skuFalabella}_\${targetView}.jpg\`;
         const duplicateKey = outputFilename.toLowerCase();
 
         if (usedNames.has(duplicateKey)) {
-          state.errors.push(`Fila ${row.rowNumber}: nombre repetido "${outputFilename}".`);
+          state.errors.push(\`Fila \${row.rowNumber}: nombre repetido "\${outputFilename}".\`);
           return;
         }
 
@@ -831,16 +814,19 @@
 
       state.items.sort((a, b) => {
         if (a.skuFalabella === b.skuFalabella) return a.targetView - b.targetView;
-        return a.skuFalabella.localeCompare(b.skuFalabella, undefined, { numeric: true, sensitivity: "base" });
+        return a.skuFalabella.localeCompare(b.skuFalabella, undefined, {
+          numeric: true,
+          sensitivity: "base"
+        });
       });
 
       state.manifestText = buildManifestText();
-      renderStats();
+      renderSummary();
       renderResults();
       renderErrors();
 
       if (state.items.length) {
-        setStatus(`${state.items.length} imagen(es) lista(s).`);
+        setStatus(\`\${state.items.length} imagen(es) lista(s).\`);
       } else {
         setStatus("No hubo resultados válidos.");
       }
@@ -851,63 +837,61 @@
     function buildManifestText() {
       return state.items.map(item => {
         return [
-          `Fila:${item.rowNumber}`,
-          `Marca:${state.activeBrand}`,
-          `Mango:${item.mangoCode}`,
-          `SKU:${item.skuFalabella}`,
-          `VistaOrigen:${item.sourceView}`,
-          `VistaFinal:${item.targetView}`,
-          `Archivo:${item.outputFilename}`,
-          `URL:${item.imageUrl}`
+          \`Fila:\${item.rowNumber}\`,
+          \`Marca:\${state.activeBrand}\`,
+          \`Mango:\${item.mangoCode}\`,
+          \`SKU:\${item.skuFalabella}\`,
+          \`VistaOrigen:\${item.sourceView}\`,
+          \`VistaFinal:\${item.targetView}\`,
+          \`Archivo:\${item.outputFilename}\`,
+          \`URL:\${item.imageUrl}\`
         ].join(" | ");
-      }).join("\n");
+      }).join("\\n");
     }
 
-    function renderStats() {
-      els.statRows.textContent = String(state.rawRows.length);
-      els.statReady.textContent = String(state.items.length);
-      els.statErrors.textContent = String(state.errors.length);
-      els.statBrand.textContent = BRANDS[state.activeBrand]?.short || "—";
+    function renderSummary() {
+      els.summaryRows.textContent = String(state.rawRows.length);
+      els.summaryReady.textContent = String(state.items.length);
+      els.summaryErrors.textContent = String(state.errors.length);
       els.btnDownloadZip.disabled = state.items.length === 0;
-      els.btnCopyManifest.disabled = !state.manifestText;
       els.activeBrandLabel.textContent = BRANDS[state.activeBrand]?.label || "";
     }
 
     function renderResults() {
       if (!state.rawRows.length && !state.items.length) {
-        els.resultsPanel.innerHTML = `<div class="empty">Carga un Excel y presiona Procesar.</div>`;
+        els.resultsPanel.innerHTML = '<div class="empty">Carga un Excel y presiona Procesar.</div>';
         return;
       }
 
       if (!state.items.length) {
-        els.resultsPanel.innerHTML = `<div class="empty">No hay filas listas todavía.</div>`;
+        els.resultsPanel.innerHTML = '<div class="empty">No hay filas listas todavía.</div>';
         return;
       }
 
       const rowsHtml = state.items.map(item => {
-        return `
+        return \`
           <tr>
-            <td>${item.rowNumber}</td>
+            <td>\${item.rowNumber}</td>
             <td>
               <div class="thumb">
-                <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
+                <img src="\${escapeHtml(item.imageUrl)}" alt="\${escapeHtml(item.outputFilename)}" loading="lazy">
               </div>
             </td>
-            <td class="mono">${escapeHtml(item.mangoCode)}</td>
-            <td class="mono">${escapeHtml(item.skuFalabella)}</td>
-            <td class="mono">${escapeHtml(item.outputFilename)}</td>
+            <td class="mono">\${escapeHtml(item.mangoCode)}</td>
+            <td class="mono">\${escapeHtml(item.skuFalabella)}</td>
+            <td class="mono">\${escapeHtml(item.outputFilename)}</td>
             <td><span class="chip ok">Lista</span></td>
             <td>
               <div class="row-actions">
-                <button class="btn btn-secondary" data-open="${escapeHtml(item.imageUrl)}">Abrir</button>
-                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}">Descargar</button>
+                <button class="btn btn-secondary" data-open="\${escapeHtml(item.imageUrl)}">Abrir</button>
+                <button class="btn btn-primary" data-download="\${escapeHtml(item.rowNumber)}">Descargar</button>
               </div>
             </td>
           </tr>
-        `;
+        \`;
       }).join("");
 
-      els.resultsPanel.innerHTML = `
+      els.resultsPanel.innerHTML = \`
         <div class="table-wrap">
           <table>
             <thead>
@@ -921,10 +905,10 @@
                 <th>Acciones</th>
               </tr>
             </thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody>\${rowsHtml}</tbody>
           </table>
         </div>
-      `;
+      \`;
 
       els.resultsPanel.querySelectorAll("[data-open]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -949,14 +933,14 @@
         return;
       }
 
-      els.errorsPanel.innerHTML = `
+      els.errorsPanel.innerHTML = \`
         <section class="errors">
           <h3>Errores</h3>
           <ol>
-            ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
+            \${state.errors.map(err => \`<li>\${escapeHtml(err)}</li>\`).join("")}
           </ol>
         </section>
-      `;
+      \`;
     }
 
     async function fetchBlob(url) {
@@ -967,7 +951,7 @@
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(\`HTTP \${response.status}\`);
       }
 
       return await response.blob();
@@ -982,21 +966,21 @@
 
     async function downloadSingle(item) {
       try {
-        setStatus(`Descargando ${item.outputFilename}...`);
+        setStatus(\`Descargando \${item.outputFilename}...\`);
         setProgress(20);
 
         const blob = await fetchBlob(item.imageUrl);
         const ext = guessExtension(blob);
-        const finalName = item.outputFilename.replace(/\.jpg$/i, `.${ext}`);
+        const finalName = item.outputFilename.replace(/\\.jpg$/i, \`.\${ext}\`);
 
         saveAs(blob, finalName);
 
         setProgress(100);
-        setStatus(`Descarga completada: ${finalName}`);
+        setStatus(\`Descarga completada: \${finalName}\`);
       } catch (error) {
         console.error(error);
         setProgress(0);
-        setStatus(`No se pudo descargar ${item.outputFilename}.`);
+        setStatus(\`No se pudo descargar \${item.outputFilename}.\`);
       }
     }
 
@@ -1008,7 +992,6 @@
 
       els.btnDownloadZip.disabled = true;
       els.btnProcess.disabled = true;
-      els.btnCopyManifest.disabled = true;
 
       try {
         const zip = new JSZip();
@@ -1017,23 +1000,23 @@
         const total = state.items.length;
 
         setProgress(0);
-        setStatus(`Preparando ZIP... 0/${total}`);
+        setStatus(\`Preparando ZIP... 0/\${total}\`);
 
         for (const item of state.items) {
           try {
             const blob = await fetchBlob(item.imageUrl);
             const ext = guessExtension(blob);
-            const finalName = item.outputFilename.replace(/\.jpg$/i, `.${ext}`);
+            const finalName = item.outputFilename.replace(/\\.jpg$/i, \`.\${ext}\`);
             zip.file(finalName, blob);
           } catch (error) {
             console.error(error);
             failed++;
-            state.errors.push(`No se pudo descargar ${item.mangoCode}.`);
+            state.errors.push(\`No se pudo descargar \${item.mangoCode}.\`);
           }
 
           done++;
           setProgress(Math.round((done / total) * 100));
-          setStatus(`Preparando ZIP... ${done}/${total}`);
+          setStatus(\`Preparando ZIP... \${done}/\${total}\`);
         }
 
         if (state.manifestText) {
@@ -1044,12 +1027,13 @@
         const zipName = buildZipName();
 
         saveAs(zipBlob, zipName);
+        renderSummary();
         renderErrors();
 
         if (failed > 0) {
-          setStatus(`ZIP generado con ${failed} falla(s).`);
+          setStatus(\`ZIP generado con \${failed} falla(s).\`);
         } else {
-          setStatus(`ZIP generado: ${zipName}`);
+          setStatus(\`ZIP generado: \${zipName}\`);
         }
       } catch (error) {
         console.error(error);
@@ -1058,7 +1042,6 @@
       } finally {
         els.btnDownloadZip.disabled = state.items.length === 0;
         els.btnProcess.disabled = false;
-        els.btnCopyManifest.disabled = !state.manifestText;
       }
     }
 
@@ -1069,19 +1052,7 @@
       const DD = String(now.getDate()).padStart(2, "0");
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
-      return `${state.activeBrand}-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
-    }
-
-    async function copyManifest() {
-      if (!state.manifestText) return;
-
-      try {
-        await navigator.clipboard.writeText(state.manifestText);
-        setStatus("Manifiesto copiado.");
-      } catch (error) {
-        console.error(error);
-        setStatus("No se pudo copiar el manifiesto.");
-      }
+      return \`\${state.activeBrand}-\${YYYY}\${MM}\${DD}-\${hh}\${mm}.zip\`;
     }
 
     init();
