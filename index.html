@@ -465,19 +465,19 @@
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <script>
-    const BRANDS = {
-      mango: {
-        id: "mango",
-        label: "Mango",
-        iconText: "MNG",
-        candidateViews: ["002", "001", "003", "004", "023", "021", "030", "010", "008"],
+    function createModelColorBrand({ id, label, iconText, candidateViews }) {
+      return {
+        id,
+        label,
+        iconText,
+        candidateViews,
         buildUrl(code, width = 2048) {
           return `https://media.mango.com/is/image/punto/${code}?wid=${width}`;
         },
         parseCode(code) {
           const clean = String(code || "").trim();
 
-          const exactMatch = clean.match(/^(.+)-(\d{2})-(\d{3})$/);
+          const exactMatch = clean.match(/^(.+)-(\\d{2})-(\\d{3})$/);
           if (exactMatch) {
             return {
               type: "exact",
@@ -488,7 +488,7 @@
             };
           }
 
-          const baseMatch = clean.match(/^(.+)-(\d{2})$/);
+          const baseMatch = clean.match(/^(.+)-(\\d{2})$/);
           if (baseMatch) {
             return {
               type: "base",
@@ -501,16 +501,95 @@
 
           return null;
         },
-        getCandidateViews(parsed) {
+        getCandidateEntries(parsed) {
           if (parsed.type === "exact" && parsed.sourceView) {
-            return [parsed.sourceView];
+            return [{
+              fullCode: `${parsed.model}-${parsed.color}-${parsed.sourceView}`,
+              sourceLabel: parsed.sourceView
+            }];
           }
-          return [...this.candidateViews];
-        },
-        buildCode(model, color, sourceView) {
-          return `${model}-${color}-${sourceView}`;
+
+          return this.candidateViews.map(view => ({
+            fullCode: `${parsed.model}-${parsed.color}-${view}`,
+            sourceLabel: view
+          }));
         }
-      }
+      };
+    }
+
+    function createAccessoryBrand({ id, label, iconText, candidateSuffixes }) {
+      return {
+        id,
+        label,
+        iconText,
+        candidateSuffixes,
+        buildUrl(code, width = 2048) {
+          return `https://media.mango.com/is/image/punto/${code}?wid=${width}`;
+        },
+        parseCode(code) {
+          const clean = String(code || "").trim();
+
+          const exactMatch = clean.match(/^(\\d+)-(\\d{2})-(\\d{3})$/);
+          if (exactMatch) {
+            return {
+              type: "exact",
+              raw: clean,
+              model: exactMatch[1],
+              color: exactMatch[2],
+              sourceView: exactMatch[3]
+            };
+          }
+
+          const baseMatch = clean.match(/^(\\d+)(?:-\\d{2})?$/);
+          if (baseMatch) {
+            return {
+              type: "base",
+              raw: clean,
+              model: baseMatch[1],
+              color: null,
+              sourceView: null
+            };
+          }
+
+          return null;
+        },
+        getCandidateEntries(parsed) {
+          if (parsed.type === "exact" && parsed.sourceView) {
+            return [{
+              fullCode: parsed.raw,
+              sourceLabel: `${parsed.color}-${parsed.sourceView}`
+            }];
+          }
+
+          return this.candidateSuffixes.map(suffix => ({
+            fullCode: `${parsed.model}-${suffix}`,
+            sourceLabel: suffix
+          }));
+        }
+      };
+    }
+
+    const BRANDS = {
+      mango: createModelColorBrand({
+        id: "mango",
+        label: "Mango",
+        iconText: "MNG",
+        candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
+      }),
+
+      mango_man: createModelColorBrand({
+        id: "mango_man",
+        label: "Mango Man",
+        iconText: "MAN",
+        candidateViews: ["002", "001", "003", "004", "008", "558", "007", "023", "021", "030"]
+      }),
+
+      mango_accesorio: createAccessoryBrand({
+        id: "mango_accesorio",
+        label: "Mango Accesorio",
+        iconText: "ACC",
+        candidateSuffixes: ["32-051", "56-016", "32-052", "32-055", "32-053", "32-054", "32-061"]
+      })
     };
 
     const state = {
@@ -609,7 +688,7 @@
     function normalizeHeader(value) {
       return String(value || "")
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
     }
@@ -820,12 +899,11 @@
           continue;
         }
 
-        const candidateViews = brand.getCandidateViews(parsed);
+        const candidateEntries = brand.getCandidateEntries(parsed);
         const foundItemsForRow = [];
 
-        for (const sourceView of candidateViews) {
-          const fullCode = brand.buildCode(parsed.model, parsed.color, sourceView);
-          const imageUrl = brand.buildUrl(fullCode, 2048);
+        for (const entry of candidateEntries) {
+          const imageUrl = brand.buildUrl(entry.fullCode, 2048);
           const blob = await fetchBlobIfExists(imageUrl);
 
           if (!blob) continue;
@@ -833,9 +911,9 @@
           foundItemsForRow.push({
             rowNumber: row.rowNumber,
             inputCode,
-            mangoCode: fullCode,
+            mangoCode: entry.fullCode,
             skuFalabella,
-            sourceView,
+            sourceView: entry.sourceLabel,
             imageUrl,
             blob
           });
@@ -843,7 +921,7 @@
 
         if (foundItemsForRow.length === 0) {
           if (parsed.type === "exact") {
-            state.errors.push(`Fila ${row.rowNumber}: no existe la vista "${parsed.sourceView}" para "${parsed.model}-${parsed.color}".`);
+            state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
           } else {
             state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
           }
@@ -858,7 +936,7 @@
           const finalView = index + 1;
           const ext = guessExtension(item.blob);
           const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
-          const duplicateKey = outputFilename.toLowerCase();
+          const duplicateKey = `${item.rowNumber}__${outputFilename.toLowerCase()}`;
 
           if (usedNames.has(duplicateKey)) {
             state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
@@ -883,11 +961,8 @@
       }
 
       state.items.sort((a, b) => {
-        if (a.skuFalabella === b.skuFalabella) return a.targetView - b.targetView;
-        return a.skuFalabella.localeCompare(b.skuFalabella, undefined, {
-          numeric: true,
-          sensitivity: "base"
-        });
+        if (a.rowNumber !== b.rowNumber) return a.rowNumber - b.rowNumber;
+        return a.targetView - b.targetView;
       });
 
       state.manifestText = buildManifestText();
@@ -938,7 +1013,7 @@
         lines.push("Sin registros.");
       }
 
-      return lines.join("\n");
+      return lines.join("\\n");
     }
 
     function renderSummary() {
