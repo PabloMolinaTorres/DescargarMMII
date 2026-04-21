@@ -477,7 +477,7 @@
         parseCode(code) {
           const clean = String(code || "").trim();
 
-          const exactMatch = clean.match(/^(.+)-(\\d{2})-(\\d{3})$/);
+          const exactMatch = clean.match(/^(.+)-([A-Za-z0-9]{2,3})-(\\d{3})$/);
           if (exactMatch) {
             return {
               type: "exact",
@@ -488,7 +488,7 @@
             };
           }
 
-          const baseMatch = clean.match(/^(.+)-(\\d{2})$/);
+          const baseMatch = clean.match(/^(.+)-([A-Za-z0-9]{2,3})$/);
           if (baseMatch) {
             return {
               type: "base",
@@ -529,7 +529,7 @@
         parseCode(code) {
           const clean = String(code || "").trim();
 
-          const exactMatch = clean.match(/^(\\d+)-(\\d{2})-(\\d{3})$/);
+          const exactMatch = clean.match(/^(\\d+)-([A-Za-z0-9]{2,3})-(\\d{3})$/);
           if (exactMatch) {
             return {
               type: "exact",
@@ -540,7 +540,7 @@
             };
           }
 
-          const baseMatch = clean.match(/^(\\d+)-(\\d{2})$/);
+          const baseMatch = clean.match(/^(\\d+)-([A-Za-z0-9]{2,3})$/);
           if (baseMatch) {
             return {
               type: "base",
@@ -693,27 +693,19 @@
         .replace(/[^a-z0-9]/g, "");
     }
 
+    function looksLikeMangoHeader(v) {
+      return v.includes("modelo") && v.includes("mango");
+    }
+
+    function looksLikeSkuHeader(v) {
+      return v.includes("sku") && v.includes("falabella");
+    }
+
     function guessColumnIndexes(firstRow) {
       const normalized = firstRow.map(normalizeHeader);
 
-      const mangoCandidates = [
-        "modelomango",
-        "modelocolormango",
-        "codigomango",
-        "mango",
-        "referenciamango"
-      ];
-
-      const skuCandidates = [
-        "skufalabella",
-        "skufala",
-        "falabella",
-        "sku",
-        "skuftb"
-      ];
-
-      let mangoIndex = normalized.findIndex(v => mangoCandidates.includes(v));
-      let skuIndex = normalized.findIndex(v => skuCandidates.includes(v));
+      let mangoIndex = normalized.findIndex(v => looksLikeMangoHeader(v));
+      let skuIndex = normalized.findIndex(v => looksLikeSkuHeader(v));
 
       const hasHeader = mangoIndex !== -1 || skuIndex !== -1;
 
@@ -936,7 +928,7 @@
           const finalView = index + 1;
           const ext = guessExtension(item.blob);
           const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
-          const duplicateKey = outputFilename.toLowerCase();
+          const duplicateKey = `${item.rowNumber}__${outputFilename.toLowerCase()}`;
 
           if (usedNames.has(duplicateKey)) {
             state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
