@@ -465,7 +465,7 @@
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <script>
-    function createModelColorBrand({ id, label, iconText, candidateViews }) {
+    function createBrand({ id, label, iconText, candidateViews }) {
       return {
         id,
         label,
@@ -517,78 +517,26 @@
       };
     }
 
-    function createAccessoryBrand({ id, label, iconText, candidateSuffixes }) {
-      return {
-        id,
-        label,
-        iconText,
-        candidateSuffixes,
-        buildUrl(code, width = 2048) {
-          return `https://media.mango.com/is/image/punto/${code}?wid=${width}`;
-        },
-        parseCode(code) {
-          const clean = String(code || "").trim();
-
-          const exactMatch = clean.match(/^(\\d+)-([A-Za-z0-9]{2,3})-(\\d{3})$/);
-          if (exactMatch) {
-            return {
-              type: "exact",
-              raw: clean,
-              model: exactMatch[1],
-              color: exactMatch[2],
-              sourceView: exactMatch[3]
-            };
-          }
-
-          const baseMatch = clean.match(/^(\\d+)-([A-Za-z0-9]{2,3})$/);
-          if (baseMatch) {
-            return {
-              type: "base",
-              raw: clean,
-              model: baseMatch[1],
-              color: baseMatch[2],
-              sourceView: null
-            };
-          }
-
-          return null;
-        },
-        getCandidateEntries(parsed) {
-          if (parsed.type === "exact" && parsed.sourceView) {
-            return [{
-              fullCode: parsed.raw,
-              sourceLabel: `${parsed.color}-${parsed.sourceView}`
-            }];
-          }
-
-          return this.candidateSuffixes.map(suffix => ({
-            fullCode: `${parsed.model}-${suffix}`,
-            sourceLabel: suffix
-          }));
-        }
-      };
-    }
-
     const BRANDS = {
-      mango: createModelColorBrand({
+      mango: createBrand({
         id: "mango",
         label: "Mango",
         iconText: "MNG",
         candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
       }),
 
-      mango_man: createModelColorBrand({
+      mango_man: createBrand({
         id: "mango_man",
         label: "Mango Man",
         iconText: "MAN",
         candidateViews: ["002", "001", "003", "004", "008", "558", "007", "023", "021", "030"]
       }),
 
-      mango_accesorio: createAccessoryBrand({
+      mango_accesorio: createBrand({
         id: "mango_accesorio",
         label: "Mango Accesorio",
         iconText: "ACC",
-        candidateSuffixes: ["32-051", "56-016", "32-052", "32-055", "32-053", "32-054", "32-061"]
+        candidateViews: ["051", "016", "052", "055", "053", "054", "061"]
       })
     };
 
@@ -928,7 +876,7 @@
           const finalView = index + 1;
           const ext = guessExtension(item.blob);
           const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
-          const duplicateKey = `${item.rowNumber}__${outputFilename.toLowerCase()}`;
+          const duplicateKey = outputFilename.toLowerCase();
 
           if (usedNames.has(duplicateKey)) {
             state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
