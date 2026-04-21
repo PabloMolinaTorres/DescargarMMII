@@ -540,13 +540,13 @@
             };
           }
 
-          const baseMatch = clean.match(/^(\\d+)(?:-\\d{2})?$/);
+          const baseMatch = clean.match(/^(\\d+)-(\\d{2})$/);
           if (baseMatch) {
             return {
               type: "base",
               raw: clean,
               model: baseMatch[1],
-              color: null,
+              color: baseMatch[2],
               sourceView: null
             };
           }
@@ -936,7 +936,7 @@
           const finalView = index + 1;
           const ext = guessExtension(item.blob);
           const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
-          const duplicateKey = `${item.rowNumber}__${outputFilename.toLowerCase()}`;
+          const duplicateKey = outputFilename.toLowerCase();
 
           if (usedNames.has(duplicateKey)) {
             state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
