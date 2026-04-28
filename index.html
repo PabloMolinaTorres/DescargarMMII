@@ -104,7 +104,7 @@
       align-items:center;
       justify-content:center;
       flex-shrink:0;
-      font-size:11px;
+      font-size:10px;
       font-weight:700;
       color:#111;
       letter-spacing:.08em;
@@ -276,7 +276,7 @@
     table{
       width:100%;
       border-collapse:collapse;
-      min-width:1120px;
+      min-width:1160px;
     }
 
     th, td{
@@ -465,15 +465,12 @@
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <script>
-    function createBrand({ id, label, iconText, candidateViews }) {
+    function createModelColorBrand({ id, label, iconText, candidateViews }) {
       return {
         id,
         label,
         iconText,
-        candidateViews,
-        buildUrl(code, width = 2048) {
-          return `https://media.mango.com/is/image/punto/${code}?wid=${width}`;
-        },
+        templateHeader: `Modelo ${label.toLowerCase()}`,
         parseCode(code) {
           const clean = String(code || "").trim();
 
@@ -504,40 +501,105 @@
         getCandidateEntries(parsed) {
           if (parsed.type === "exact" && parsed.sourceView) {
             return [{
-              fullCode: `${parsed.model}-${parsed.color}-${parsed.sourceView}`,
-              sourceLabel: parsed.sourceView
+              displayCode: `${parsed.model}-${parsed.color}-${parsed.sourceView}`,
+              sourceLabel: parsed.sourceView,
+              url: `https://media.mango.com/is/image/punto/${parsed.model}-${parsed.color}-${parsed.sourceView}?wid=2048`
             }];
           }
 
-          return this.candidateViews.map(view => ({
-            fullCode: `${parsed.model}-${parsed.color}-${view}`,
-            sourceLabel: view
+          return candidateViews.map(view => ({
+            displayCode: `${parsed.model}-${parsed.color}-${view}`,
+            sourceLabel: view,
+            url: `https://media.mango.com/is/image/punto/${parsed.model}-${parsed.color}-${view}?wid=2048`
+          }));
+        }
+      };
+    }
+
+    function createEtamBrand() {
+      const etamViews = [
+        { suffix: "x", folder: "dwecc25dfe" },
+        { suffix: "a", folder: "dw9316ac3d" },
+        { suffix: "b", folder: "dw3a4ad450" },
+        { suffix: "c", folder: "dw406218bb" },
+        { suffix: "f", folder: "dwc01a062a" },
+        { suffix: "g", folder: "dwaf67e97f" },
+        { suffix: "d", folder: "dwfb8de729" }
+      ];
+
+      return {
+        id: "etam",
+        label: "ETAM",
+        iconText: "ETAM",
+        templateHeader: "Modelo etam",
+        parseCode(code) {
+          const clean = String(code || "").trim();
+
+          const exactMatch = clean.match(/^([A-Za-z0-9]+)[_-]([a-z])$/i);
+          if (exactMatch) {
+            return {
+              type: "exact",
+              raw: clean,
+              model: exactMatch[1],
+              sourceView: exactMatch[2].toLowerCase()
+            };
+          }
+
+          const baseMatch = clean.match(/^([A-Za-z0-9]+)$/);
+          if (baseMatch) {
+            return {
+              type: "base",
+              raw: clean,
+              model: baseMatch[1],
+              sourceView: null
+            };
+          }
+
+          return null;
+        },
+        getCandidateEntries(parsed) {
+          if (parsed.type === "exact" && parsed.sourceView) {
+            const found = etamViews.find(v => v.suffix === parsed.sourceView);
+            if (!found) return [];
+            return [{
+              displayCode: `${parsed.model}_${found.suffix}`,
+              sourceLabel: found.suffix,
+              url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${found.folder}/${parsed.model}_${found.suffix}.jpg?sw=1250`
+            }];
+          }
+
+          return etamViews.map(view => ({
+            displayCode: `${parsed.model}_${view.suffix}`,
+            sourceLabel: view.suffix,
+            url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${view.folder}/${parsed.model}_${view.suffix}.jpg?sw=1250`
           }));
         }
       };
     }
 
     const BRANDS = {
-      mango: createBrand({
+      mango: createModelColorBrand({
         id: "mango",
         label: "Mango",
         iconText: "MNG",
         candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
       }),
 
-      mango_man: createBrand({
+      mango_man: createModelColorBrand({
         id: "mango_man",
         label: "Mango Man",
         iconText: "MAN",
         candidateViews: ["002", "001", "003", "004", "008", "558", "007", "023", "021", "030"]
       }),
 
-      mango_accesorio: createBrand({
+      mango_accesorio: createModelColorBrand({
         id: "mango_accesorio",
         label: "Mango Accesorio",
         iconText: "ACC",
         candidateViews: ["051", "016", "052", "055", "053", "054", "061", "056"]
-      })
+      }),
+
+      etam: createEtamBrand()
     };
 
     const state = {
@@ -641,8 +703,8 @@
         .replace(/[^a-z0-9]/g, "");
     }
 
-    function looksLikeMangoHeader(v) {
-      return v.includes("modelo") && v.includes("mango");
+    function looksLikeModelHeader(v) {
+      return v.includes("modelo") || v.includes("codigo") || v.includes("referencia");
     }
 
     function looksLikeSkuHeader(v) {
@@ -652,16 +714,16 @@
     function guessColumnIndexes(firstRow) {
       const normalized = firstRow.map(normalizeHeader);
 
-      let mangoIndex = normalized.findIndex(v => looksLikeMangoHeader(v));
+      let modelIndex = normalized.findIndex(v => looksLikeModelHeader(v));
       let skuIndex = normalized.findIndex(v => looksLikeSkuHeader(v));
 
-      const hasHeader = mangoIndex !== -1 || skuIndex !== -1;
+      const hasHeader = modelIndex !== -1 || skuIndex !== -1;
 
-      if (mangoIndex === -1) mangoIndex = 0;
+      if (modelIndex === -1) modelIndex = 0;
       if (skuIndex === -1) skuIndex = 1;
 
       return {
-        mangoIndex,
+        modelIndex,
         skuIndex,
         startRow: hasHeader ? 1 : 0
       };
@@ -704,19 +766,19 @@
 
       if (!matrix.length) return [];
 
-      const { mangoIndex, skuIndex, startRow } = guessColumnIndexes(matrix[0]);
+      const { modelIndex, skuIndex, startRow } = guessColumnIndexes(matrix[0]);
 
       const rows = [];
       for (let i = startRow; i < matrix.length; i++) {
         const row = matrix[i];
-        const mangoCode = String(row[mangoIndex] ?? "").trim();
+        const modelCode = String(row[modelIndex] ?? "").trim();
         const skuFalabella = String(row[skuIndex] ?? "").trim();
 
-        if (!mangoCode && !skuFalabella) continue;
+        if (!modelCode && !skuFalabella) continue;
 
         rows.push({
           rowNumber: i + 1,
-          mangoCode,
+          modelCode,
           skuFalabella
         });
       }
@@ -726,14 +788,15 @@
 
     function downloadTemplate() {
       try {
+        const activeBrand = BRANDS[state.activeBrand];
         const data = [
-          { "Modelo mango": "", "Sku falabella": "" }
+          { [activeBrand.templateHeader]: "", "Sku falabella": "" }
         ];
 
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
-        XLSX.writeFile(wb, "plantilla-mango-falabella.xlsx");
+        XLSX.writeFile(wb, `plantilla-${activeBrand.id}.xlsx`);
 
         setStatus("Plantilla descargada.");
       } catch (error) {
@@ -810,7 +873,7 @@
 
       for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
         const row = state.rawRows[rowIndex];
-        const inputCode = String(row.mangoCode || "").trim();
+        const inputCode = String(row.modelCode || "").trim();
         const skuFalabella = String(row.skuFalabella || "").trim();
 
         const rowResult = {
@@ -843,18 +906,16 @@
         const foundItemsForRow = [];
 
         for (const entry of candidateEntries) {
-          const imageUrl = brand.buildUrl(entry.fullCode, 2048);
-          const blob = await fetchBlobIfExists(imageUrl);
-
+          const blob = await fetchBlobIfExists(entry.url);
           if (!blob) continue;
 
           foundItemsForRow.push({
             rowNumber: row.rowNumber,
             inputCode,
-            mangoCode: entry.fullCode,
+            foundCode: entry.displayCode,
             skuFalabella,
             sourceView: entry.sourceLabel,
-            imageUrl,
+            imageUrl: entry.url,
             blob
           });
         }
@@ -953,7 +1014,7 @@
         lines.push("Sin registros.");
       }
 
-      return lines.join("\\n");
+      return lines.join("\n");
     }
 
     function renderSummary() {
@@ -985,7 +1046,7 @@
               </div>
             </td>
             <td class="mono">${escapeHtml(item.inputCode)}</td>
-            <td class="mono">${escapeHtml(item.mangoCode)}</td>
+            <td class="mono">${escapeHtml(item.foundCode)}</td>
             <td class="mono">${escapeHtml(item.sourceView)}</td>
             <td class="mono">${escapeHtml(item.skuFalabella)}</td>
             <td class="mono">${escapeHtml(item.outputFilename)}</td>
@@ -993,7 +1054,7 @@
             <td>
               <div class="row-actions">
                 <button class="btn btn-secondary" data-open="${escapeHtml(item.imageUrl)}">Abrir</button>
-                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}" data-code="${escapeHtml(item.mangoCode)}">Descargar</button>
+                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}" data-code="${escapeHtml(item.foundCode)}">Descargar</button>
               </div>
             </td>
           </tr>
@@ -1008,7 +1069,7 @@
                 <th>Fila</th>
                 <th>Preview</th>
                 <th>Entrada</th>
-                <th>Mango encontrado</th>
+                <th>Encontrado</th>
                 <th>Vista origen</th>
                 <th>SKU Falabella</th>
                 <th>Archivo final</th>
@@ -1031,8 +1092,8 @@
       els.resultsPanel.querySelectorAll("[data-download]").forEach(btn => {
         btn.addEventListener("click", () => {
           const rowNumber = Number(btn.getAttribute("data-download"));
-          const mangoCode = btn.getAttribute("data-code");
-          const item = state.items.find(x => x.rowNumber === rowNumber && x.mangoCode === mangoCode);
+          const foundCode = btn.getAttribute("data-code");
+          const item = state.items.find(x => x.rowNumber === rowNumber && x.foundCode === foundCode);
           if (!item) return;
           downloadSingle(item);
         });
