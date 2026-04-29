@@ -422,7 +422,7 @@
       <div class="topbar">
         <div class="title-wrap">
           <h1>Descargador</h1>
-          <p id="activeBrandLabel">Mango</p>
+          <p id="activeBrandLabel">Mango / Kid-Teen</p>
         </div>
 
         <div class="actions">
@@ -586,7 +586,7 @@
     const BRANDS = {
       mango: createModelColorBrand({
         id: "mango",
-        label: "Mango",
+        label: "Mango / Kid-Teen",
         iconText: "MNG",
         candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
       }),
@@ -600,7 +600,7 @@
 
       mango_accesorio: createModelColorBrand({
         id: "mango_accesorio",
-        label: "Mango Accesorio",
+        label: "Mango Accesorio / Calzado",
         iconText: "ACC",
         candidateViews: ["051", "016", "052", "055", "053", "054", "061", "056"]
       }),
@@ -830,7 +830,21 @@
       setProgress(0);
     }
 
-    function probeImageExists(url) {
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        return await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function probeImageExists(url, timeoutMs = 4000) {
       return new Promise(resolve => {
         const img = new Image();
         let done = false;
@@ -838,10 +852,12 @@
         const finish = (value) => {
           if (done) return;
           done = true;
+          img.onload = null;
+          img.onerror = null;
           resolve(value);
         };
 
-        const timer = setTimeout(() => finish(false), 10000);
+        const timer = setTimeout(() => finish(false), timeoutMs);
 
         img.onload = () => {
           clearTimeout(timer);
@@ -857,13 +873,16 @@
       });
     }
 
-    async function fetchBlobIfExistsDetailed(url) {
+    async function fetchBlobIfExistsDetailed(url, options = {}) {
+      const fetchTimeoutMs = options.fetchTimeoutMs ?? 8000;
+      const probeTimeoutMs = options.probeTimeoutMs ?? 4000;
+
       try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
           method: "GET",
           mode: "cors",
           cache: "no-store"
-        });
+        }, fetchTimeoutMs);
 
         if (response.ok) {
           const blob = await response.blob();
@@ -874,7 +893,7 @@
       } catch (error) {
       }
 
-      const exists = await probeImageExists(url);
+      const exists = await probeImageExists(url, probeTimeoutMs);
       if (exists) {
         return { blob: null, exists: true, corsBlocked: true };
       }
@@ -884,6 +903,7 @@
 
     function guessExtension(blob) {
       const type = String(blob?.type || "").toLowerCase();
+      if (type.includes("avif")) return "avif";
       if (type.includes("png")) return "png";
       if (type.includes("webp")) return "webp";
       return "jpg";
@@ -914,141 +934,156 @@
       setProgress(0);
       setStatus(`Buscando y descargando... 0/${totalRows}`);
 
-      for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
-        const row = state.rawRows[rowIndex];
-        const inputCode = String(row.modelCode || "").trim();
-        const skuFalabella = String(row.skuFalabella || "").trim();
+      try {
+        for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
+          const row = state.rawRows[rowIndex];
+          const inputCode = String(row.modelCode || "").trim();
+          const skuFalabella = String(row.skuFalabella || "").trim();
 
-        const rowResult = {
-          rowNumber: row.rowNumber,
-          inputCode,
-          skuFalabella,
-          downloadedFiles: [],
-          ok: false
-        };
+          const rowResult = {
+            rowNumber: row.rowNumber,
+            inputCode,
+            skuFalabella,
+            downloadedFiles: [],
+            ok: false
+          };
 
-        if (!inputCode || !skuFalabella) {
-          state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        const parsed = brand.parseCode(inputCode);
-
-        if (!parsed) {
-          state.errors.push(`Fila ${row.rowNumber}: código inválido "${inputCode}".`);
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        const candidateEntries = brand.getCandidateEntries(parsed);
-        const foundItemsForRow = [];
-        let hadCorsBlocked = false;
-
-        for (const entry of candidateEntries) {
-          const result = await fetchBlobIfExistsDetailed(entry.url);
-
-          if (result.blob) {
-            foundItemsForRow.push({
-              rowNumber: row.rowNumber,
-              inputCode,
-              foundCode: entry.displayCode,
-              skuFalabella,
-              sourceView: entry.sourceLabel,
-              imageUrl: entry.url,
-              blob: result.blob,
-              blocked: false
-            });
-          } else if (result.exists && result.corsBlocked) {
-            hadCorsBlocked = true;
-
-            foundItemsForRow.push({
-              rowNumber: row.rowNumber,
-              inputCode,
-              foundCode: entry.displayCode,
-              skuFalabella,
-              sourceView: entry.sourceLabel,
-              imageUrl: entry.url,
-              blob: null,
-              previewUrl: entry.url,
-              blocked: true
-            });
-          }
-        }
-
-        const downloadable = foundItemsForRow.filter(item => item.blob);
-
-        if (foundItemsForRow.length === 0) {
-          if (parsed.type === "exact") {
-            state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
-          } else {
-            state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
+          if (!inputCode || !skuFalabella) {
+            state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
+            state.rowResults.push(rowResult);
+            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+            continue;
           }
 
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
+          const parsed = brand.parseCode(inputCode);
 
-        if (downloadable.length === 0 && hadCorsBlocked) {
-          state.errors.push(`Fila ${row.rowNumber}: la imagen existe, pero la web no pudo leerla para comprimirla.`);
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        downloadable.forEach((item, index) => {
-          const finalView = index + 1;
-          const ext = guessExtension(item.blob);
-          const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
-          const duplicateKey = outputFilename.toLowerCase();
-
-          if (usedNames.has(duplicateKey)) {
-            state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
-            return;
+          if (!parsed) {
+            state.errors.push(`Fila ${row.rowNumber}: código inválido "${inputCode}".`);
+            state.rowResults.push(rowResult);
+            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+            continue;
           }
 
-          usedNames.add(duplicateKey);
+          const candidateEntries = brand.getCandidateEntries(parsed);
+          const foundItemsForRow = [];
+          let hadCorsBlocked = false;
 
-          item.targetView = finalView;
-          item.outputFilename = outputFilename;
-          item.previewUrl = URL.createObjectURL(item.blob);
+          const requestOptions = brand.id === "etam"
+            ? { fetchTimeoutMs: 3000, probeTimeoutMs: 2500 }
+            : { fetchTimeoutMs: 8000, probeTimeoutMs: 4000 };
 
-          state.items.push(item);
-          rowResult.downloadedFiles.push(outputFilename);
+          for (const entry of candidateEntries) {
+            const result = await fetchBlobIfExistsDetailed(entry.url, requestOptions);
+
+            if (result.blob) {
+              foundItemsForRow.push({
+                rowNumber: row.rowNumber,
+                inputCode,
+                foundCode: entry.displayCode,
+                skuFalabella,
+                sourceView: entry.sourceLabel,
+                imageUrl: entry.url,
+                blob: result.blob,
+                blocked: false
+              });
+              continue;
+            }
+
+            if (result.exists && result.corsBlocked) {
+              hadCorsBlocked = true;
+
+              if (brand.id !== "etam") {
+                foundItemsForRow.push({
+                  rowNumber: row.rowNumber,
+                  inputCode,
+                  foundCode: entry.displayCode,
+                  skuFalabella,
+                  sourceView: entry.sourceLabel,
+                  imageUrl: entry.url,
+                  blob: null,
+                  previewUrl: entry.url,
+                  blocked: true
+                });
+              }
+
+              if (brand.id === "etam") {
+                break;
+              }
+            }
+          }
+
+          const downloadable = foundItemsForRow.filter(item => item.blob);
+
+          if (downloadable.length === 0 && hadCorsBlocked) {
+            state.errors.push(`Fila ${row.rowNumber}: la imagen existe, pero la web no pudo leerla para comprimirla.`);
+            state.rowResults.push(rowResult);
+            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+            continue;
+          }
+
+          if (foundItemsForRow.length === 0) {
+            if (parsed.type === "exact") {
+              state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
+            } else {
+              state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
+            }
+
+            state.rowResults.push(rowResult);
+            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+            continue;
+          }
+
+          downloadable.forEach((item, index) => {
+            const finalView = index + 1;
+            const ext = guessExtension(item.blob);
+            const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
+            const duplicateKey = outputFilename.toLowerCase();
+
+            if (usedNames.has(duplicateKey)) {
+              state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
+              return;
+            }
+
+            usedNames.add(duplicateKey);
+
+            item.targetView = finalView;
+            item.outputFilename = outputFilename;
+            item.previewUrl = URL.createObjectURL(item.blob);
+
+            state.items.push(item);
+            rowResult.downloadedFiles.push(outputFilename);
+          });
+
+          rowResult.ok = rowResult.downloadedFiles.length > 0;
+          state.rowResults.push(rowResult);
+
+          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+        }
+
+        state.items.sort((a, b) => {
+          if (a.rowNumber !== b.rowNumber) return a.rowNumber - b.rowNumber;
+          return a.targetView - b.targetView;
         });
 
-        rowResult.ok = rowResult.downloadedFiles.length > 0;
-        state.rowResults.push(rowResult);
+        state.manifestText = buildManifestText();
+        renderSummary();
+        renderResults();
+        renderErrors();
 
-        setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-        setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+        if (state.items.length) {
+          setStatus(`${state.items.length} imagen(es) lista(s) en memoria.`);
+        } else {
+          setStatus("No se encontraron imágenes descargables.");
+        }
+      } finally {
+        els.btnProcess.disabled = false;
+        els.btnDownloadZip.disabled = state.items.length === 0;
       }
-
-      state.items.sort((a, b) => {
-        if (a.rowNumber !== b.rowNumber) return a.rowNumber - b.rowNumber;
-        return a.targetView - b.targetView;
-      });
-
-      state.manifestText = buildManifestText();
-      renderSummary();
-      renderResults();
-      renderErrors();
-
-      if (state.items.length) {
-        setStatus(`${state.items.length} imagen(es) lista(s) en memoria.`);
-      } else {
-        setStatus("No se encontraron imágenes descargables.");
-      }
-
-      els.btnProcess.disabled = false;
-      els.btnDownloadZip.disabled = state.items.length === 0;
     }
 
     function buildManifestText() {
