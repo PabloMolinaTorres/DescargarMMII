@@ -1,465 +1,870 @@
-const express = require("express");
-const path = require("path");
-const JSZip = require("jszip");
-const crypto = require("crypto");
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Descargador</title>
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.static(path.join(__dirname, "public")));
-
-const JOB_TTL_MS = 1000 * 60 * 60 * 2;
-const jobs = new Map();
-
-function now() {
-  return Date.now();
-}
-
-function cleanupJobs() {
-  const limit = now() - JOB_TTL_MS;
-  for (const [jobId, job] of jobs.entries()) {
-    if (job.createdAt < limit) {
-      jobs.delete(jobId);
-    }
-  }
-}
-
-setInterval(cleanupJobs, 1000 * 60 * 15);
-
-function detectExtensionFromContentType(contentType = "") {
-  const type = String(contentType).toLowerCase();
-
-  if (type.includes("image/avif")) return "avif";
-  if (type.includes("image/jpeg")) return "jpg";
-  if (type.includes("image/jpg")) return "jpg";
-  if (type.includes("image/png")) return "png";
-  if (type.includes("image/webp")) return "webp";
-  if (type.includes("image/gif")) return "gif";
-  if (type.includes("image/svg")) return "svg";
-
-  return "jpg";
-}
-
-function buildSafeFilename(name) {
-  return String(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
-}
-
-function createModelColorBrand({ id, label, templateHeader, candidateViews }) {
-  return {
-    id,
-    label,
-    templateHeader,
-
-    parseCode(code) {
-      const clean = String(code || "").trim();
-
-      const exactMatch = clean.match(/^(.+)-([A-Za-z0-9]{2,3})-(\d{3})$/);
-      if (exactMatch) {
-        return {
-          type: "exact",
-          raw: clean,
-          model: exactMatch[1],
-          color: exactMatch[2],
-          sourceView: exactMatch[3]
-        };
-      }
-
-      const baseMatch = clean.match(/^(.+)-([A-Za-z0-9]{2,3})$/);
-      if (baseMatch) {
-        return {
-          type: "base",
-          raw: clean,
-          model: baseMatch[1],
-          color: baseMatch[2],
-          sourceView: null
-        };
-      }
-
-      return null;
-    },
-
-    getCandidateEntries(parsed) {
-      if (parsed.type === "exact" && parsed.sourceView) {
-        const fullCode = `${parsed.model}-${parsed.color}-${parsed.sourceView}`;
-        return [{
-          displayCode: fullCode,
-          sourceLabel: parsed.sourceView,
-          url: `https://media.mango.com/is/image/punto/${fullCode}?wid=2048`
-        }];
-      }
-
-      return candidateViews.map(view => {
-        const fullCode = `${parsed.model}-${parsed.color}-${view}`;
-        return {
-          displayCode: fullCode,
-          sourceLabel: view,
-          url: `https://media.mango.com/is/image/punto/${fullCode}?wid=2048`
-        };
-      });
-    }
-  };
-}
-
-function createEtamBrand() {
-  const etamViews = [
-    { suffix: "x", folder: "dwecc25dfe" },
-    { suffix: "a", folder: "dw9316ac3d" },
-    { suffix: "b", folder: "dw3a4ad450" },
-    { suffix: "c", folder: "dw406218bb" },
-    { suffix: "f", folder: "dwc01a062a" },
-    { suffix: "g", folder: "dwaf67e97f" },
-    { suffix: "d", folder: "dwfb8de729" }
-  ];
-
-  return {
-    id: "etam",
-    label: "ETAM",
-    templateHeader: "Modelo etam",
-
-    parseCode(code) {
-      const clean = String(code || "").trim();
-
-      const exactMatch = clean.match(/^([A-Za-z0-9]+)[_-]([a-z])$/i);
-      if (exactMatch) {
-        return {
-          type: "exact",
-          raw: clean,
-          model: exactMatch[1],
-          sourceView: exactMatch[2].toLowerCase()
-        };
-      }
-
-      const baseMatch = clean.match(/^([A-Za-z0-9]+)$/);
-      if (baseMatch) {
-        return {
-          type: "base",
-          raw: clean,
-          model: baseMatch[1],
-          sourceView: null
-        };
-      }
-
-      return null;
-    },
-
-    getCandidateEntries(parsed) {
-      if (parsed.type === "exact" && parsed.sourceView) {
-        const found = etamViews.find(v => v.suffix === parsed.sourceView);
-        if (!found) return [];
-
-        return [{
-          displayCode: `${parsed.model}_${found.suffix}`,
-          sourceLabel: found.suffix,
-          url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${found.folder}/${parsed.model}_${found.suffix}.jpg?sw=1250`
-        }];
-      }
-
-      return etamViews.map(view => ({
-        displayCode: `${parsed.model}_${view.suffix}`,
-        sourceLabel: view.suffix,
-        url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${view.folder}/${parsed.model}_${view.suffix}.jpg?sw=1250`
-      }));
-    }
-  };
-}
-
-const BRANDS = {
-  mango: createModelColorBrand({
-    id: "mango",
-    label: "Mango / Kid-Teen",
-    templateHeader: "Modelo mango",
-    candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
-  }),
-
-  mango_man: createModelColorBrand({
-    id: "mango_man",
-    label: "Mango Man",
-    templateHeader: "Modelo mango man",
-    candidateViews: ["002", "001", "003", "004", "008", "558", "007", "023", "021", "030"]
-  }),
-
-  mango_accesorio: createModelColorBrand({
-    id: "mango_accesorio",
-    label: "Mango Accesorio / Calzado",
-    templateHeader: "Modelo mango accesorio",
-    candidateViews: ["051", "016", "052", "055", "053", "054", "061", "056"]
-  }),
-
-  etam: createEtamBrand()
-};
-
-async function downloadRemoteImage(url) {
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        "Referer": url
-      }
-    });
-
-    if (!response.ok) {
-      return { ok: false, reason: "not_found" };
+  <style>
+    :root{
+      --green:#8fca00;
+      --green-dark:#76aa00;
+      --bg:#f6f7f9;
+      --panel:#ffffff;
+      --text:#2f3136;
+      --muted:#7a7f87;
+      --border:#e5e7eb;
+      --danger:#d93025;
+      --ok:#15803d;
+      --shadow:0 10px 30px rgba(0,0,0,.06);
+      --radius:16px;
     }
 
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.toLowerCase().startsWith("image/")) {
-      return { ok: false, reason: "not_image" };
+    *{
+      box-sizing:border-box;
+      font-family:'Lato',sans-serif;
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    if (!buffer.length) {
-      return { ok: false, reason: "empty" };
+    html,body{
+      margin:0;
+      padding:0;
+      background:var(--bg);
+      color:var(--text);
     }
 
-    return {
-      ok: true,
-      buffer,
-      contentType,
-      ext: detectExtensionFromContentType(contentType)
+    .app{
+      display:grid;
+      grid-template-columns:240px 1fr;
+      min-height:100vh;
+    }
+
+    .sidebar{
+      background:#fff;
+      border-right:1px solid var(--border);
+      padding:20px;
+      position:sticky;
+      top:0;
+      height:100vh;
+    }
+
+    .brand-title{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      margin-bottom:14px;
+    }
+
+    .brand-list{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .brand-btn{
+      width:100%;
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--text);
+      border-radius:14px;
+      padding:12px;
+      text-align:left;
+      cursor:pointer;
+      font-size:14px;
+      font-weight:700;
+      transition:.15s ease;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .brand-btn:hover{
+      transform:translateY(-1px);
+      box-shadow:var(--shadow);
+    }
+
+    .brand-btn.active{
+      background:var(--green);
+      border-color:var(--green);
+      color:#fff;
+    }
+
+    .brand-icon{
+      width:38px;
+      height:38px;
+      border-radius:10px;
+      background:#fff;
+      border:1px solid rgba(0,0,0,.08);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-shrink:0;
+      font-size:10px;
+      font-weight:700;
+      color:#111;
+      letter-spacing:.08em;
+      line-height:1;
+      text-transform:uppercase;
+    }
+
+    .brand-btn.active .brand-icon{
+      border-color:rgba(255,255,255,.35);
+    }
+
+    .content{
+      padding:20px;
+    }
+
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:20px;
+      flex-wrap:wrap;
+    }
+
+    .title-wrap h1{
+      margin:0;
+      font-size:24px;
+      line-height:1.1;
+    }
+
+    .title-wrap p{
+      margin:6px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .btn{
+      border:none;
+      border-radius:12px;
+      min-height:44px;
+      padding:12px 16px;
+      font-size:13px;
+      font-weight:700;
+      cursor:pointer;
+      transition:.15s ease;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+    }
+
+    .btn:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+      transform:none;
+    }
+
+    .btn-primary{
+      background:var(--green);
+      color:#fff;
+    }
+
+    .btn-primary:hover{
+      background:var(--green-dark);
+    }
+
+    .btn-secondary{
+      background:#fff;
+      color:var(--text);
+      border:1px solid var(--border);
+    }
+
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      margin-bottom:20px;
+    }
+
+    .panel-body{
+      padding:18px;
+    }
+
+    .controls{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:14px;
+      align-items:end;
+    }
+
+    .field label{
+      display:block;
+      font-size:13px;
+      font-weight:700;
+      margin-bottom:8px;
+      color:#4a4f57;
+    }
+
+    .file-input{
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      padding:12px 14px;
+      font-size:14px;
+      color:var(--text);
+    }
+
+    .file-meta{
+      margin-top:10px;
+      font-size:13px;
+      color:var(--muted);
+      min-height:18px;
+    }
+
+    .status-line{
+      margin-top:16px;
+      font-size:13px;
+      color:var(--muted);
+      min-height:18px;
+    }
+
+    .progress{
+      margin-top:12px;
+      height:10px;
+      background:#eef1f4;
+      border:1px solid var(--border);
+      border-radius:999px;
+      overflow:hidden;
+    }
+
+    .progress-bar{
+      height:100%;
+      width:0%;
+      background:linear-gradient(90deg,var(--green),#b4df37);
+      transition:width .2s ease;
+    }
+
+    .summary{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:14px;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:#fff;
+      border:1px solid var(--border);
+      font-size:12px;
+      font-weight:700;
+    }
+
+    .table-wrap{
+      overflow:auto;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:1160px;
+    }
+
+    th, td{
+      padding:12px 10px;
+      border-bottom:1px solid var(--border);
+      text-align:left;
+      vertical-align:middle;
+      font-size:13px;
+    }
+
+    th{
+      font-size:12px;
+      color:#68707a;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+      background:#fafbfc;
+      position:sticky;
+      top:0;
+      z-index:1;
+    }
+
+    .thumb{
+      width:72px;
+      height:72px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+    }
+
+    .thumb img{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      display:block;
+    }
+
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:700;
+      border:1px solid var(--border);
+      background:#fff;
+      white-space:nowrap;
+    }
+
+    .chip.ok{
+      color:var(--ok);
+      background:#f1fbf4;
+      border-color:#cce9d3;
+    }
+
+    .mono{
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      word-break:break-word;
+    }
+
+    .row-actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .row-actions .btn{
+      min-height:36px;
+      padding:8px 12px;
+      font-size:12px;
+    }
+
+    .empty{
+      padding:44px 20px;
+      text-align:center;
+      color:var(--muted);
+      font-size:14px;
+    }
+
+    .errors{
+      background:#fff5f4;
+      border:1px solid #f7c9c3;
+      border-radius:16px;
+      padding:16px;
+    }
+
+    .errors h3{
+      margin:0 0 10px;
+      font-size:15px;
+      color:var(--danger);
+    }
+
+    .errors ol{
+      margin:0;
+      padding-left:18px;
+      font-size:13px;
+      color:#6a2a24;
+      line-height:1.5;
+    }
+
+    @media (max-width: 1100px){
+      .app{
+        grid-template-columns:1fr;
+      }
+
+      .sidebar{
+        position:static;
+        height:auto;
+        border-right:none;
+        border-bottom:1px solid var(--border);
+      }
+
+      .brand-list{
+        flex-direction:row;
+        flex-wrap:wrap;
+      }
+
+      .brand-btn{
+        width:auto;
+        min-width:160px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand-title">Marcas</div>
+      <div class="brand-list" id="brandList"></div>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <div class="title-wrap">
+          <h1>Descargador</h1>
+          <p id="activeBrandLabel">Mango / Kid-Teen</p>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-secondary" id="btnDownloadTemplate">Descargar plantilla</button>
+          <button class="btn btn-secondary" id="btnClear">Limpiar</button>
+          <button class="btn btn-primary" id="btnProcess">Procesar</button>
+          <button class="btn btn-primary" id="btnDownloadZip" disabled>Descargar ZIP</button>
+        </div>
+      </div>
+
+      <section class="panel">
+        <div class="panel-body">
+          <div class="controls">
+            <div class="field">
+              <label for="excelFile">Excel</label>
+              <input id="excelFile" class="file-input" type="file" accept=".xlsx,.xls,.csv" />
+              <div class="file-meta" id="fileMeta">Sin archivo cargado.</div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="pill">Filas cargadas: <span id="summaryRows">0</span></div>
+            <div class="pill">Imágenes listas: <span id="summaryReady">0</span></div>
+            <div class="pill">Errores: <span id="summaryErrors">0</span></div>
+          </div>
+
+          <div class="status-line" id="statusLine">Esperando archivo...</div>
+          <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-body" id="resultsPanel">
+          <div class="empty">Carga un Excel y presiona Procesar.</div>
+        </div>
+      </section>
+
+      <section id="errorsPanel"></section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <script>
+    const API_BASE = "https://TU-BACKEND.onrender.com";
+
+    function apiUrl(path) {
+      return `${API_BASE}${path}`;
+    }
+
+    function assetUrl(url) {
+      if (!url) return "";
+      if (/^https?:\/\//i.test(url)) return url;
+      return `${API_BASE}${url}`;
+    }
+
+    const state = {
+      brands: [],
+      activeBrand: "mango",
+      rawRows: [],
+      items: [],
+      errors: [],
+      rowResults: [],
+      sourceFileName: "",
+      jobId: null
     };
-  } catch (error) {
-    return { ok: false, reason: "fetch_error" };
-  }
-}
 
-function buildManifestText(rowResults) {
-  const okRows = rowResults.filter(row => row.ok);
-  const badRows = rowResults.filter(row => !row.ok);
-
-  const lines = [];
-
-  lines.push("DESCARGADO CORRECTAMENTE");
-  lines.push("");
-
-  if (okRows.length) {
-    okRows.forEach(row => {
-      lines.push(
-        `Fila ${row.rowNumber} | ${row.inputCode} | SKU ${row.skuFalabella} | ${row.downloadedFiles.join(", ")}`
-      );
-    });
-  } else {
-    lines.push("Sin registros.");
-  }
-
-  lines.push("");
-  lines.push("NO DESCARGO");
-  lines.push("");
-
-  if (badRows.length) {
-    badRows.forEach(row => {
-      lines.push(
-        `Fila ${row.rowNumber} | ${row.inputCode || "(sin código)"} | SKU ${row.skuFalabella || "(sin SKU)"}`
-      );
-    });
-  } else {
-    lines.push("Sin registros.");
-  }
-
-  return lines.join("\n");
-}
-
-app.get("/api/brands", (req, res) => {
-  const brands = Object.values(BRANDS).map(brand => ({
-    id: brand.id,
-    label: brand.label,
-    templateHeader: brand.templateHeader
-  }));
-
-  res.json({ brands });
-});
-
-app.post("/api/process", async (req, res) => {
-  cleanupJobs();
-
-  const { brand: brandId, rows } = req.body || {};
-  const brand = BRANDS[brandId];
-
-  if (!brand) {
-    return res.status(400).json({ error: "Marca no válida." });
-  }
-
-  if (!Array.isArray(rows)) {
-    return res.status(400).json({ error: "Rows inválido." });
-  }
-
-  const items = [];
-  const errors = [];
-  const rowResults = [];
-  const usedNames = new Set();
-
-  for (const row of rows) {
-    const rowNumber = Number(row.rowNumber || 0);
-    const inputCode = String(row.modelCode || "").trim();
-    const skuFalabella = String(row.skuFalabella || "").trim();
-
-    const rowResult = {
-      rowNumber,
-      inputCode,
-      skuFalabella,
-      downloadedFiles: [],
-      ok: false
+    const els = {
+      brandList: document.getElementById("brandList"),
+      activeBrandLabel: document.getElementById("activeBrandLabel"),
+      excelFile: document.getElementById("excelFile"),
+      fileMeta: document.getElementById("fileMeta"),
+      btnDownloadTemplate: document.getElementById("btnDownloadTemplate"),
+      btnClear: document.getElementById("btnClear"),
+      btnProcess: document.getElementById("btnProcess"),
+      btnDownloadZip: document.getElementById("btnDownloadZip"),
+      summaryRows: document.getElementById("summaryRows"),
+      summaryReady: document.getElementById("summaryReady"),
+      summaryErrors: document.getElementById("summaryErrors"),
+      statusLine: document.getElementById("statusLine"),
+      progressBar: document.getElementById("progressBar"),
+      resultsPanel: document.getElementById("resultsPanel"),
+      errorsPanel: document.getElementById("errorsPanel")
     };
 
-    if (!inputCode || !skuFalabella) {
-      errors.push(`Fila ${rowNumber}: faltan datos.`);
-      rowResults.push(rowResult);
-      continue;
+    function setStatus(text) {
+      els.statusLine.textContent = text;
     }
 
-    const parsed = brand.parseCode(inputCode);
-    if (!parsed) {
-      errors.push(`Fila ${rowNumber}: código inválido "${inputCode}".`);
-      rowResults.push(rowResult);
-      continue;
+    function setProgress(percent) {
+      const value = Math.max(0, Math.min(100, Number(percent) || 0));
+      els.progressBar.style.width = value + "%";
     }
 
-    const candidateEntries = brand.getCandidateEntries(parsed);
-    const foundItemsForRow = [];
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
 
-    for (const entry of candidateEntries) {
-      const result = await downloadRemoteImage(entry.url);
-      if (!result.ok) continue;
+    function normalizeHeader(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    }
 
-      foundItemsForRow.push({
-        rowNumber,
-        inputCode,
-        foundCode: entry.displayCode,
-        skuFalabella,
-        sourceView: entry.sourceLabel,
-        originalUrl: entry.url,
-        buffer: result.buffer,
-        mimeType: result.contentType,
-        ext: result.ext
+    function looksLikeModelHeader(v) {
+      return v.includes("modelo") || v.includes("codigo") || v.includes("referencia");
+    }
+
+    function looksLikeSkuHeader(v) {
+      return v.includes("sku") && v.includes("falabella");
+    }
+
+    function guessColumnIndexes(firstRow) {
+      const normalized = firstRow.map(normalizeHeader);
+
+      let modelIndex = normalized.findIndex(v => looksLikeModelHeader(v));
+      let skuIndex = normalized.findIndex(v => looksLikeSkuHeader(v));
+
+      if (modelIndex === -1) modelIndex = 0;
+      if (skuIndex === -1) skuIndex = 1;
+
+      return { modelIndex, skuIndex };
+    }
+
+    function getActiveBrand() {
+      return state.brands.find(b => b.id === state.activeBrand);
+    }
+
+    async function loadBrands() {
+      const res = await fetch(apiUrl("/api/brands"));
+      const data = await res.json();
+      state.brands = data.brands || [];
+      renderBrands();
+      renderSummary();
+    }
+
+    function iconFromBrandId(id) {
+      if (id === "etam") return "ETAM";
+      if (id === "mango_man") return "MAN";
+      if (id === "mango_accesorio") return "ACC";
+      return "MNG";
+    }
+
+    function renderBrands() {
+      els.brandList.innerHTML = state.brands.map(brand => {
+        const active = brand.id === state.activeBrand ? "active" : "";
+        return `
+          <button class="brand-btn ${active}" data-brand="${brand.id}">
+            <span class="brand-icon">${iconFromBrandId(brand.id)}</span>
+            <span>${escapeHtml(brand.label)}</span>
+          </button>
+        `;
+      }).join("");
+
+      els.brandList.querySelectorAll(".brand-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.activeBrand = btn.getAttribute("data-brand");
+          renderBrands();
+          els.activeBrandLabel.textContent = getActiveBrand()?.label || "";
+          setStatus(`${getActiveBrand()?.label || ""} activo.`);
+        });
       });
+
+      els.activeBrandLabel.textContent = getActiveBrand()?.label || "";
     }
 
-    if (foundItemsForRow.length === 0) {
-      if (parsed.type === "exact") {
-        errors.push(`Fila ${rowNumber}: no existe "${inputCode}".`);
-      } else {
-        errors.push(`Fila ${rowNumber}: no se encontraron vistas para "${inputCode}".`);
-      }
-
-      rowResults.push(rowResult);
-      continue;
+    function renderSummary() {
+      els.summaryRows.textContent = String(state.rawRows.length);
+      els.summaryReady.textContent = String(state.items.length);
+      els.summaryErrors.textContent = String(state.errors.length);
+      els.btnDownloadZip.disabled = !state.jobId || state.items.length === 0;
     }
 
-    foundItemsForRow.forEach((item, index) => {
-      const finalView = index + 1;
-      const outputFilename = buildSafeFilename(`${item.skuFalabella}_${finalView}.${item.ext}`);
-      const duplicateKey = outputFilename.toLowerCase();
-
-      if (usedNames.has(duplicateKey)) {
-        errors.push(`Fila ${rowNumber}: nombre repetido "${outputFilename}".`);
+    function renderResults() {
+      if (!state.rawRows.length && !state.items.length) {
+        els.resultsPanel.innerHTML = '<div class="empty">Carga un Excel y presiona Procesar.</div>';
         return;
       }
 
-      usedNames.add(duplicateKey);
+      if (!state.items.length) {
+        els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
+        return;
+      }
 
-      item.id = crypto.randomUUID();
-      item.targetView = finalView;
-      item.outputFilename = outputFilename;
+      const rowsHtml = state.items.map(item => `
+        <tr>
+          <td>${item.rowNumber}</td>
+          <td>
+            <div class="thumb">
+              <img src="${escapeHtml(assetUrl(item.previewUrl))}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
+            </div>
+          </td>
+          <td class="mono">${escapeHtml(item.inputCode)}</td>
+          <td class="mono">${escapeHtml(item.foundCode)}</td>
+          <td class="mono">${escapeHtml(item.sourceView)}</td>
+          <td class="mono">${escapeHtml(item.skuFalabella)}</td>
+          <td class="mono">${escapeHtml(item.outputFilename)}</td>
+          <td><span class="chip ok">Lista</span></td>
+          <td>
+            <div class="row-actions">
+              <a class="btn btn-secondary" href="${escapeHtml(assetUrl(item.originalUrl))}" target="_blank" rel="noopener noreferrer">Abrir</a>
+              <a class="btn btn-primary" href="${escapeHtml(assetUrl(item.downloadUrl))}">Descargar</a>
+            </div>
+          </td>
+        </tr>
+      `).join("");
 
-      items.push(item);
-      rowResult.downloadedFiles.push(outputFilename);
-    });
+      els.resultsPanel.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>Preview</th>
+                <th>Entrada</th>
+                <th>Encontrado</th>
+                <th>Vista origen</th>
+                <th>SKU Falabella</th>
+                <th>Archivo final</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }
 
-    rowResult.ok = rowResult.downloadedFiles.length > 0;
-    rowResults.push(rowResult);
-  }
+    function renderErrors() {
+      if (!state.errors.length) {
+        els.errorsPanel.innerHTML = "";
+        return;
+      }
 
-  const manifestText = buildManifestText(rowResults);
-  const jobId = crypto.randomUUID();
+      els.errorsPanel.innerHTML = `
+        <section class="errors">
+          <h3>Errores</h3>
+          <ol>
+            ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
+          </ol>
+        </section>
+      `;
+    }
 
-  jobs.set(jobId, {
-    createdAt: now(),
-    brandId,
-    brandLabel: brand.label,
-    items,
-    rowResults,
-    manifestText
-  });
+    async function parseExcelFile(file) {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-  const responseItems = items.map(item => ({
-    id: item.id,
-    rowNumber: item.rowNumber,
-    inputCode: item.inputCode,
-    foundCode: item.foundCode,
-    sourceView: item.sourceView,
-    skuFalabella: item.skuFalabella,
-    outputFilename: item.outputFilename,
-    previewUrl: `/api/job/${jobId}/file/${item.id}`,
-    downloadUrl: `/api/job/${jobId}/file/${item.id}?download=1`,
-    originalUrl: item.originalUrl
-  }));
+      if (!matrix.length) return [];
 
-  res.json({
-    jobId,
-    brandLabel: brand.label,
-    items: responseItems,
-    rowResults,
-    errors
-  });
-});
+      const { modelIndex, skuIndex } = guessColumnIndexes(matrix[0]);
+      const firstRow = matrix[0].map(v => normalizeHeader(v));
+      const firstRowLooksLikeHeader =
+        firstRow.some(v => looksLikeModelHeader(v) || looksLikeSkuHeader(v));
 
-app.get("/api/job/:jobId/file/:itemId", (req, res) => {
-  const { jobId, itemId } = req.params;
-  const download = req.query.download === "1";
+      const startRow = firstRowLooksLikeHeader ? 1 : 0;
 
-  const job = jobs.get(jobId);
-  if (!job) return res.status(404).send("Job no encontrado");
+      const rows = [];
+      for (let i = startRow; i < matrix.length; i++) {
+        const row = matrix[i];
+        const modelCode = String(row[modelIndex] ?? "").trim();
+        const skuFalabella = String(row[skuIndex] ?? "").trim();
 
-  const item = job.items.find(x => x.id === itemId);
-  if (!item) return res.status(404).send("Archivo no encontrado");
+        if (!modelCode && !skuFalabella) continue;
 
-  res.setHeader("Content-Type", item.mimeType || "application/octet-stream");
-  res.setHeader(
-    "Content-Disposition",
-    `${download ? "attachment" : "inline"}; filename="${encodeURIComponent(item.outputFilename)}"`
-  );
+        rows.push({
+          rowNumber: i + 1,
+          modelCode,
+          skuFalabella
+        });
+      }
 
-  res.send(item.buffer);
-});
+      return rows;
+    }
 
-app.get("/api/download/:jobId", async (req, res) => {
-  const { jobId } = req.params;
-  const job = jobs.get(jobId);
+    function downloadTemplate() {
+      const activeBrand = getActiveBrand();
+      if (!activeBrand) return;
 
-  if (!job) return res.status(404).send("Job no encontrado");
+      const data = [
+        { [activeBrand.templateHeader]: "", "Sku falabella": "" }
+      ];
 
-  const zip = new JSZip();
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+      XLSX.writeFile(wb, `plantilla-${activeBrand.id}.xlsx`);
 
-  job.items.forEach(item => {
-    zip.file(item.outputFilename, item.buffer);
-  });
+      setStatus("Plantilla descargada.");
+    }
 
-  zip.file("manifest.txt", job.manifestText || "");
+    function clearAll() {
+      els.excelFile.value = "";
+      els.fileMeta.textContent = "Sin archivo cargado.";
+      state.rawRows = [];
+      state.items = [];
+      state.errors = [];
+      state.rowResults = [];
+      state.jobId = null;
+      state.sourceFileName = "";
+      renderSummary();
+      renderResults();
+      renderErrors();
+      setStatus("Limpio.");
+      setProgress(0);
+    }
 
-  const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
+    async function processRows() {
+      if (!state.rawRows.length) {
+        setStatus("Carga un Excel primero.");
+        return;
+      }
 
-  const d = new Date();
-  const YYYY = d.getFullYear();
-  const MM = String(d.getMonth() + 1).padStart(2, "0");
-  const DD = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const zipName = `${job.brandId}-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
+      els.btnProcess.disabled = true;
+      els.btnDownloadZip.disabled = true;
+      setProgress(20);
+      setStatus("Procesando...");
 
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
-  res.send(zipBuffer);
-});
+      try {
+        const response = await fetch(apiUrl("/api/process"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            brand: state.activeBrand,
+            rows: state.rawRows
+          })
+        });
 
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+        const data = await response.json();
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo procesar.");
+        }
+
+        state.jobId = data.jobId;
+        state.items = data.items || [];
+        state.errors = data.errors || [];
+        state.rowResults = data.rowResults || [];
+
+        renderSummary();
+        renderResults();
+        renderErrors();
+        setProgress(100);
+
+        if (state.items.length) {
+          setStatus(`${state.items.length} imagen(es) lista(s).`);
+        } else {
+          setStatus("No se encontraron imágenes descargables.");
+        }
+      } catch (error) {
+        console.error(error);
+        setProgress(0);
+        setStatus(error.message || "No se pudo procesar.");
+      } finally {
+        els.btnProcess.disabled = false;
+        els.btnDownloadZip.disabled = !state.jobId || state.items.length === 0;
+      }
+    }
+
+    async function downloadZip() {
+      if (!state.jobId) return;
+
+      try {
+        setStatus("Descargando ZIP...");
+        setProgress(100);
+
+        const response = await fetch(apiUrl(`/api/download/${state.jobId}`));
+        if (!response.ok) {
+          throw new Error("No se pudo descargar el ZIP.");
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get("content-disposition") || "";
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : "descarga.zip";
+
+        saveAs(blob, filename);
+        setStatus(`ZIP generado: ${filename}`);
+      } catch (error) {
+        console.error(error);
+        setProgress(0);
+        setStatus(error.message || "No se pudo descargar el ZIP.");
+      }
+    }
+
+    async function handleExcelChange(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      try {
+        const rows = await parseExcelFile(file);
+        state.rawRows = rows;
+        state.items = [];
+        state.errors = [];
+        state.rowResults = [];
+        state.jobId = null;
+        state.sourceFileName = file.name;
+
+        els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
+        renderSummary();
+        renderResults();
+        renderErrors();
+        setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
+        setProgress(0);
+      } catch (error) {
+        console.error(error);
+        setStatus("No se pudo leer el archivo.");
+      }
+    }
+
+    function bindEvents() {
+      els.excelFile.addEventListener("change", handleExcelChange);
+      els.btnDownloadTemplate.addEventListener("click", downloadTemplate);
+      els.btnClear.addEventListener("click", clearAll);
+      els.btnProcess.addEventListener("click", processRows);
+      els.btnDownloadZip.addEventListener("click", downloadZip);
+    }
+
+    async function init() {
+      bindEvents();
+      await loadBrands();
+      renderResults();
+      renderErrors();
+      setStatus("Esperando archivo...");
+    }
+
+    init();
+  </script>
+</body>
+</html>
