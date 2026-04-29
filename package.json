@@ -1,0 +1,16 @@
+{
+  "name": "descargador-marcas",
+  "version": "1.0.0",
+  "description": "Descargador de imágenes para Mango y ETAM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "jszip": "^3.10.1"
+  }
+}
