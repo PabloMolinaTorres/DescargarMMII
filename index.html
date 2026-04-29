@@ -336,12 +336,6 @@
       border-color:#cce9d3;
     }
 
-    .chip.warn{
-      color:#8a5a00;
-      background:#fff8e7;
-      border-color:#f2d39b;
-    }
-
     .mono{
       font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       word-break:break-word;
@@ -471,6 +465,8 @@
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <script>
+    const ETAM_BACKEND_URL = "https://etam-backend.vercel.app/api/process";
+
     function createModelColorBrand({ id, label, iconText, candidateViews }) {
       return {
         id,
@@ -523,63 +519,11 @@
     }
 
     function createEtamBrand() {
-      const etamViews = [
-        { suffix: "x", folder: "dwecc25dfe" },
-        { suffix: "a", folder: "dw9316ac3d" },
-        { suffix: "b", folder: "dw3a4ad450" },
-        { suffix: "c", folder: "dw406218bb" },
-        { suffix: "f", folder: "dwc01a062a" },
-        { suffix: "g", folder: "dwaf67e97f" },
-        { suffix: "d", folder: "dwfb8de729" }
-      ];
-
       return {
         id: "etam",
         label: "ETAM",
         iconText: "ETAM",
-        templateHeader: "Modelo etam",
-        parseCode(code) {
-          const clean = String(code || "").trim();
-
-          const exactMatch = clean.match(/^([A-Za-z0-9]+)[_-]([a-z])$/i);
-          if (exactMatch) {
-            return {
-              type: "exact",
-              raw: clean,
-              model: exactMatch[1],
-              sourceView: exactMatch[2].toLowerCase()
-            };
-          }
-
-          const baseMatch = clean.match(/^([A-Za-z0-9]+)$/);
-          if (baseMatch) {
-            return {
-              type: "base",
-              raw: clean,
-              model: baseMatch[1],
-              sourceView: null
-            };
-          }
-
-          return null;
-        },
-        getCandidateEntries(parsed) {
-          if (parsed.type === "exact" && parsed.sourceView) {
-            const found = etamViews.find(v => v.suffix === parsed.sourceView);
-            if (!found) return [];
-            return [{
-              displayCode: `${parsed.model}_${found.suffix}`,
-              sourceLabel: found.suffix,
-              url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${found.folder}/${parsed.model}_${found.suffix}.jpg?sw=1250`
-            }];
-          }
-
-          return etamViews.map(view => ({
-            displayCode: `${parsed.model}_${view.suffix}`,
-            sourceLabel: view.suffix,
-            url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${view.folder}/${parsed.model}_${view.suffix}.jpg?sw=1250`
-          }));
-        }
+        templateHeader: "Modelo etam"
       };
     }
 
@@ -640,6 +584,7 @@
       renderBrands();
       bindEvents();
       renderSummary();
+      updateEtamUI();
     }
 
     function bindEvents() {
@@ -677,10 +622,23 @@
           if (!BRANDS[brandId]) return;
           state.activeBrand = brandId;
           renderBrands();
+          renderSummary();
+          updateEtamUI();
           els.activeBrandLabel.textContent = BRANDS[brandId].label;
-          setStatus(`${BRANDS[brandId].label} activo.`);
+
+          if (brandId === "etam") {
+            setStatus("ETAM usa backend. Al presionar Procesar se descargará el ZIP.");
+          } else {
+            setStatus(`${BRANDS[brandId].label} activo.`);
+          }
         });
       });
+    }
+
+    function updateEtamUI() {
+      const isEtam = state.activeBrand === "etam";
+      els.btnProcess.textContent = isEtam ? "Procesar y descargar ZIP" : "Procesar";
+      els.btnDownloadZip.style.display = isEtam ? "none" : "inline-flex";
     }
 
     function setStatus(text) {
@@ -749,7 +707,13 @@
         renderSummary();
         renderResults();
         renderErrors();
-        setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
+
+        if (state.activeBrand === "etam") {
+          setStatus(`${rows.length} fila(s) cargada(s). ETAM descargará el ZIP desde el backend.`);
+        } else {
+          setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
+        }
+
         setProgress(0);
       } catch (error) {
         console.error(error);
@@ -909,12 +873,76 @@
       return "jpg";
     }
 
+    async function processEtamViaBackend() {
+      try {
+        setProgress(15);
+        setStatus("Enviando ETAM al backend...");
+
+        const response = await fetch(ETAM_BACKEND_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            rows: state.rawRows
+          })
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+
+        if (!response.ok) {
+          if (contentType.includes("application/json")) {
+            const data = await response.json();
+            state.errors = Array.isArray(data.errors) ? data.errors : [data.error || "No se pudo procesar ETAM."];
+            renderErrors();
+            renderSummary();
+            setProgress(0);
+            setStatus(state.errors[0] || "No se pudo procesar ETAM.");
+            return;
+          }
+
+          throw new Error("No se pudo procesar ETAM.");
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get("content-disposition") || "";
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : "etam.zip";
+
+        state.items = [];
+        state.errors = [];
+        state.manifestText = "";
+        state.rowResults = [];
+        renderSummary();
+        renderResults();
+        renderErrors();
+
+        saveAs(blob, filename);
+        setProgress(100);
+        setStatus(`ZIP ETAM descargado: ${filename}`);
+      } catch (error) {
+        console.error(error);
+        setProgress(0);
+        setStatus(error.message || "No se pudo procesar ETAM.");
+      }
+    }
+
     async function processRows() {
       const brand = BRANDS[state.activeBrand];
       if (!brand) return;
 
       if (!state.rawRows.length) {
         setStatus("Carga un Excel primero.");
+        return;
+      }
+
+      if (brand.id === "etam") {
+        els.btnProcess.disabled = true;
+        try {
+          await processEtamViaBackend();
+        } finally {
+          els.btnProcess.disabled = false;
+        }
         return;
       }
 
@@ -968,14 +996,9 @@
 
           const candidateEntries = brand.getCandidateEntries(parsed);
           const foundItemsForRow = [];
-          let hadCorsBlocked = false;
-
-          const requestOptions = brand.id === "etam"
-            ? { fetchTimeoutMs: 3000, probeTimeoutMs: 2500 }
-            : { fetchTimeoutMs: 8000, probeTimeoutMs: 4000 };
 
           for (const entry of candidateEntries) {
-            const result = await fetchBlobIfExistsDetailed(entry.url, requestOptions);
+            const result = await fetchBlobIfExistsDetailed(entry.url, { fetchTimeoutMs: 8000, probeTimeoutMs: 4000 });
 
             if (result.blob) {
               foundItemsForRow.push({
@@ -985,43 +1008,9 @@
                 skuFalabella,
                 sourceView: entry.sourceLabel,
                 imageUrl: entry.url,
-                blob: result.blob,
-                blocked: false
+                blob: result.blob
               });
-              continue;
             }
-
-            if (result.exists && result.corsBlocked) {
-              hadCorsBlocked = true;
-
-              if (brand.id !== "etam") {
-                foundItemsForRow.push({
-                  rowNumber: row.rowNumber,
-                  inputCode,
-                  foundCode: entry.displayCode,
-                  skuFalabella,
-                  sourceView: entry.sourceLabel,
-                  imageUrl: entry.url,
-                  blob: null,
-                  previewUrl: entry.url,
-                  blocked: true
-                });
-              }
-
-              if (brand.id === "etam") {
-                break;
-              }
-            }
-          }
-
-          const downloadable = foundItemsForRow.filter(item => item.blob);
-
-          if (downloadable.length === 0 && hadCorsBlocked) {
-            state.errors.push(`Fila ${row.rowNumber}: la imagen existe, pero la web no pudo leerla para comprimirla.`);
-            state.rowResults.push(rowResult);
-            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-            continue;
           }
 
           if (foundItemsForRow.length === 0) {
@@ -1037,7 +1026,7 @@
             continue;
           }
 
-          downloadable.forEach((item, index) => {
+          foundItemsForRow.forEach((item, index) => {
             const finalView = index + 1;
             const ext = guessExtension(item.blob);
             const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
@@ -1126,11 +1115,16 @@
       els.summaryRows.textContent = String(state.rawRows.length);
       els.summaryReady.textContent = String(state.items.length);
       els.summaryErrors.textContent = String(state.errors.length);
-      els.btnDownloadZip.disabled = state.items.length === 0;
+      els.btnDownloadZip.disabled = state.activeBrand === "etam" ? true : state.items.length === 0;
       els.activeBrandLabel.textContent = BRANDS[state.activeBrand]?.label || "";
     }
 
     function renderResults() {
+      if (state.activeBrand === "etam" && !state.items.length) {
+        els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend. Al presionar "Procesar y descargar ZIP" se descargará el archivo final.</div>';
+        return;
+      }
+
       if (!state.rawRows.length && !state.items.length) {
         els.resultsPanel.innerHTML = '<div class="empty">Carga un Excel y presiona Procesar.</div>';
         return;
