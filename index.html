@@ -109,6 +109,7 @@
       color:#111;
       letter-spacing:.08em;
       line-height:1;
+      text-transform:uppercase;
     }
 
     .brand-btn.active .brand-icon{
@@ -155,6 +156,10 @@
       font-weight:700;
       cursor:pointer;
       transition:.15s ease;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
     }
 
     .btn:hover{
@@ -336,12 +341,6 @@
       border-color:#cce9d3;
     }
 
-    .chip.warn{
-      color:#8a5a00;
-      background:#fff8e7;
-      border-color:#f2d39b;
-    }
-
     .mono{
       font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       word-break:break-word;
@@ -422,7 +421,7 @@
       <div class="topbar">
         <div class="title-wrap">
           <h1>Descargador</h1>
-          <p id="activeBrandLabel">Mango</p>
+          <p id="activeBrandLabel">Mango / Kid-Teen</p>
         </div>
 
         <div class="actions">
@@ -467,155 +466,18 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <script>
-    function createModelColorBrand({ id, label, iconText, candidateViews }) {
-      return {
-        id,
-        label,
-        iconText,
-        templateHeader: `Modelo ${label.toLowerCase()}`,
-        parseCode(code) {
-          const clean = String(code || "").trim();
-
-          const exactMatch = clean.match(/^(.+)-([A-Za-z0-9]{2,3})-(\d{3})$/);
-          if (exactMatch) {
-            return {
-              type: "exact",
-              raw: clean,
-              model: exactMatch[1],
-              color: exactMatch[2],
-              sourceView: exactMatch[3]
-            };
-          }
-
-          const baseMatch = clean.match(/^(.+)-([A-Za-z0-9]{2,3})$/);
-          if (baseMatch) {
-            return {
-              type: "base",
-              raw: clean,
-              model: baseMatch[1],
-              color: baseMatch[2],
-              sourceView: null
-            };
-          }
-
-          return null;
-        },
-        getCandidateEntries(parsed) {
-          if (parsed.type === "exact" && parsed.sourceView) {
-            return [{
-              displayCode: `${parsed.model}-${parsed.color}-${parsed.sourceView}`,
-              sourceLabel: parsed.sourceView,
-              url: `https://media.mango.com/is/image/punto/${parsed.model}-${parsed.color}-${parsed.sourceView}?wid=2048`
-            }];
-          }
-
-          return candidateViews.map(view => ({
-            displayCode: `${parsed.model}-${parsed.color}-${view}`,
-            sourceLabel: view,
-            url: `https://media.mango.com/is/image/punto/${parsed.model}-${parsed.color}-${view}?wid=2048`
-          }));
-        }
-      };
-    }
-
-    function createEtamBrand() {
-      const etamViews = [
-        { suffix: "x", folder: "dwecc25dfe" },
-        { suffix: "a", folder: "dw9316ac3d" },
-        { suffix: "b", folder: "dw3a4ad450" },
-        { suffix: "c", folder: "dw406218bb" },
-        { suffix: "f", folder: "dwc01a062a" },
-        { suffix: "g", folder: "dwaf67e97f" },
-        { suffix: "d", folder: "dwfb8de729" }
-      ];
-
-      return {
-        id: "etam",
-        label: "ETAM",
-        iconText: "ETAM",
-        templateHeader: "Modelo etam",
-        parseCode(code) {
-          const clean = String(code || "").trim();
-
-          const exactMatch = clean.match(/^([A-Za-z0-9]+)[_-]([a-z])$/i);
-          if (exactMatch) {
-            return {
-              type: "exact",
-              raw: clean,
-              model: exactMatch[1],
-              sourceView: exactMatch[2].toLowerCase()
-            };
-          }
-
-          const baseMatch = clean.match(/^([A-Za-z0-9]+)$/);
-          if (baseMatch) {
-            return {
-              type: "base",
-              raw: clean,
-              model: baseMatch[1],
-              sourceView: null
-            };
-          }
-
-          return null;
-        },
-        getCandidateEntries(parsed) {
-          if (parsed.type === "exact" && parsed.sourceView) {
-            const found = etamViews.find(v => v.suffix === parsed.sourceView);
-            if (!found) return [];
-            return [{
-              displayCode: `${parsed.model}_${found.suffix}`,
-              sourceLabel: found.suffix,
-              url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${found.folder}/${parsed.model}_${found.suffix}.jpg?sw=1250`
-            }];
-          }
-
-          return etamViews.map(view => ({
-            displayCode: `${parsed.model}_${view.suffix}`,
-            sourceLabel: view.suffix,
-            url: `https://images.etam.com/on/demandware.static/-/Sites-ELIN-master/default/${view.folder}/${parsed.model}_${view.suffix}.jpg?sw=1250`
-          }));
-        }
-      };
-    }
-
-    const BRANDS = {
-      mango: createModelColorBrand({
-        id: "mango",
-        label: "Mango",
-        iconText: "MNG",
-        candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
-      }),
-
-      mango_man: createModelColorBrand({
-        id: "mango_man",
-        label: "Mango Man",
-        iconText: "MAN",
-        candidateViews: ["002", "001", "003", "004", "008", "558", "007", "023", "021", "030"]
-      }),
-
-      mango_accesorio: createModelColorBrand({
-        id: "mango_accesorio",
-        label: "Mango Accesorio",
-        iconText: "ACC",
-        candidateViews: ["051", "016", "052", "055", "053", "054", "061", "056"]
-      }),
-
-      etam: createEtamBrand()
-    };
-
     const state = {
+      brands: [],
       activeBrand: "mango",
       rawRows: [],
       items: [],
       errors: [],
-      manifestText: "",
+      rowResults: [],
       sourceFileName: "",
-      rowResults: []
+      jobId: null
     };
 
     const els = {
@@ -635,53 +497,6 @@
       resultsPanel: document.getElementById("resultsPanel"),
       errorsPanel: document.getElementById("errorsPanel")
     };
-
-    function init() {
-      renderBrands();
-      bindEvents();
-      renderSummary();
-    }
-
-    function bindEvents() {
-      els.excelFile.addEventListener("change", handleExcelChange);
-      els.btnDownloadTemplate.addEventListener("click", downloadTemplate);
-      els.btnClear.addEventListener("click", clearAll);
-      els.btnProcess.addEventListener("click", processRows);
-      els.btnDownloadZip.addEventListener("click", downloadZip);
-    }
-
-    function revokePreviewUrls() {
-      state.items.forEach(item => {
-        if (item.previewUrl && item.previewUrl.startsWith("blob:")) {
-          try {
-            URL.revokeObjectURL(item.previewUrl);
-          } catch (_) {}
-        }
-      });
-    }
-
-    function renderBrands() {
-      els.brandList.innerHTML = Object.values(BRANDS).map(brand => {
-        const active = brand.id === state.activeBrand ? "active" : "";
-        return `
-          <button class="brand-btn ${active}" data-brand="${brand.id}">
-            <span class="brand-icon">${brand.iconText}</span>
-            <span>${escapeHtml(brand.label)}</span>
-          </button>
-        `;
-      }).join("");
-
-      els.brandList.querySelectorAll(".brand-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const brandId = btn.getAttribute("data-brand");
-          if (!BRANDS[brandId]) return;
-          state.activeBrand = brandId;
-          renderBrands();
-          els.activeBrandLabel.textContent = BRANDS[brandId].label;
-          setStatus(`${BRANDS[brandId].label} activo.`);
-        });
-      });
-    }
 
     function setStatus(text) {
       els.statusLine.textContent = text;
@@ -729,32 +544,125 @@
       return { modelIndex, skuIndex };
     }
 
-    async function handleExcelChange(event) {
-      const file = event.target.files && event.target.files[0];
-      if (!file) return;
+    function getActiveBrand() {
+      return state.brands.find(b => b.id === state.activeBrand);
+    }
 
-      try {
-        const rows = await parseExcelFile(file);
+    async function loadBrands() {
+      const res = await fetch("/api/brands");
+      const data = await res.json();
+      state.brands = data.brands || [];
+      renderBrands();
+      renderSummary();
+    }
 
-        revokePreviewUrls();
+    function iconFromBrandId(id) {
+      if (id === "etam") return "ETAM";
+      if (id === "mango_man") return "MAN";
+      if (id === "mango_accesorio") return "ACC";
+      return "MNG";
+    }
 
-        state.rawRows = rows;
-        state.items = [];
-        state.errors = [];
-        state.manifestText = "";
-        state.sourceFileName = file.name;
-        state.rowResults = [];
+    function renderBrands() {
+      els.brandList.innerHTML = state.brands.map(brand => {
+        const active = brand.id === state.activeBrand ? "active" : "";
+        return `
+          <button class="brand-btn ${active}" data-brand="${brand.id}">
+            <span class="brand-icon">${iconFromBrandId(brand.id)}</span>
+            <span>${escapeHtml(brand.label)}</span>
+          </button>
+        `;
+      }).join("");
 
-        els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
-        renderSummary();
-        renderResults();
-        renderErrors();
-        setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
-        setProgress(0);
-      } catch (error) {
-        console.error(error);
-        setStatus("No se pudo leer el archivo.");
+      els.brandList.querySelectorAll(".brand-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.activeBrand = btn.getAttribute("data-brand");
+          renderBrands();
+          els.activeBrandLabel.textContent = getActiveBrand()?.label || "";
+          setStatus(`${getActiveBrand()?.label || ""} activo.`);
+        });
+      });
+
+      els.activeBrandLabel.textContent = getActiveBrand()?.label || "";
+    }
+
+    function renderSummary() {
+      els.summaryRows.textContent = String(state.rawRows.length);
+      els.summaryReady.textContent = String(state.items.length);
+      els.summaryErrors.textContent = String(state.errors.length);
+      els.btnDownloadZip.disabled = !state.jobId || state.items.length === 0;
+    }
+
+    function renderResults() {
+      if (!state.rawRows.length && !state.items.length) {
+        els.resultsPanel.innerHTML = '<div class="empty">Carga un Excel y presiona Procesar.</div>';
+        return;
       }
+
+      if (!state.items.length) {
+        els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
+        return;
+      }
+
+      const rowsHtml = state.items.map(item => `
+        <tr>
+          <td>${item.rowNumber}</td>
+          <td>
+            <div class="thumb">
+              <img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
+            </div>
+          </td>
+          <td class="mono">${escapeHtml(item.inputCode)}</td>
+          <td class="mono">${escapeHtml(item.foundCode)}</td>
+          <td class="mono">${escapeHtml(item.sourceView)}</td>
+          <td class="mono">${escapeHtml(item.skuFalabella)}</td>
+          <td class="mono">${escapeHtml(item.outputFilename)}</td>
+          <td><span class="chip ok">Lista</span></td>
+          <td>
+            <div class="row-actions">
+              <a class="btn btn-secondary" href="${escapeHtml(item.originalUrl)}" target="_blank" rel="noopener noreferrer">Abrir</a>
+              <a class="btn btn-primary" href="${escapeHtml(item.downloadUrl)}">Descargar</a>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+
+      els.resultsPanel.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>Preview</th>
+                <th>Entrada</th>
+                <th>Encontrado</th>
+                <th>Vista origen</th>
+                <th>SKU Falabella</th>
+                <th>Archivo final</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderErrors() {
+      if (!state.errors.length) {
+        els.errorsPanel.innerHTML = "";
+        return;
+      }
+
+      els.errorsPanel.innerHTML = `
+        <section class="errors">
+          <h3>Errores</h3>
+          <ol>
+            ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
+          </ol>
+        </section>
+      `;
     }
 
     async function parseExcelFile(file) {
@@ -769,9 +677,7 @@
       const { modelIndex, skuIndex } = guessColumnIndexes(matrix[0]);
       const firstRow = matrix[0].map(v => normalizeHeader(v));
       const firstRowLooksLikeHeader =
-        firstRow.some(v => looksLikeModelHeader(v) || looksLikeSkuHeader(v)) ||
-        (firstRow[0] && firstRow[0].includes("modelo")) ||
-        (firstRow[1] && firstRow[1].includes("sku"));
+        firstRow.some(v => looksLikeModelHeader(v) || looksLikeSkuHeader(v));
 
       const startRow = firstRowLooksLikeHeader ? 1 : 0;
 
@@ -794,35 +700,30 @@
     }
 
     function downloadTemplate() {
-      try {
-        const activeBrand = BRANDS[state.activeBrand];
-        const data = [
-          { [activeBrand.templateHeader]: "", "Sku falabella": "" }
-        ];
+      const activeBrand = getActiveBrand();
+      if (!activeBrand) return;
 
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
-        XLSX.writeFile(wb, `plantilla-${activeBrand.id}.xlsx`);
+      const data = [
+        { [activeBrand.templateHeader]: "", "Sku falabella": "" }
+      ];
 
-        setStatus("Plantilla descargada.");
-      } catch (error) {
-        console.error(error);
-        setStatus("No se pudo descargar la plantilla.");
-      }
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+      XLSX.writeFile(wb, `plantilla-${activeBrand.id}.xlsx`);
+
+      setStatus("Plantilla descargada.");
     }
 
     function clearAll() {
-      revokePreviewUrls();
-
       els.excelFile.value = "";
       els.fileMeta.textContent = "Sin archivo cargado.";
       state.rawRows = [];
       state.items = [];
       state.errors = [];
-      state.manifestText = "";
-      state.sourceFileName = "";
       state.rowResults = [];
+      state.jobId = null;
+      state.sourceFileName = "";
       renderSummary();
       renderResults();
       renderErrors();
@@ -830,69 +731,7 @@
       setProgress(0);
     }
 
-    function probeImageExists(url) {
-      return new Promise(resolve => {
-        const img = new Image();
-        let done = false;
-
-        const finish = (value) => {
-          if (done) return;
-          done = true;
-          resolve(value);
-        };
-
-        const timer = setTimeout(() => finish(false), 10000);
-
-        img.onload = () => {
-          clearTimeout(timer);
-          finish(true);
-        };
-
-        img.onerror = () => {
-          clearTimeout(timer);
-          finish(false);
-        };
-
-        img.src = url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now();
-      });
-    }
-
-    async function fetchBlobIfExistsDetailed(url) {
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          mode: "cors",
-          cache: "no-store"
-        });
-
-        if (response.ok) {
-          const blob = await response.blob();
-          if (blob && blob.size > 0) {
-            return { blob, exists: true, corsBlocked: false };
-          }
-        }
-      } catch (error) {
-      }
-
-      const exists = await probeImageExists(url);
-      if (exists) {
-        return { blob: null, exists: true, corsBlocked: true };
-      }
-
-      return { blob: null, exists: false, corsBlocked: false };
-    }
-
-    function guessExtension(blob) {
-      const type = String(blob?.type || "").toLowerCase();
-      if (type.includes("png")) return "png";
-      if (type.includes("webp")) return "webp";
-      return "jpg";
-    }
-
     async function processRows() {
-      const brand = BRANDS[state.activeBrand];
-      if (!brand) return;
-
       if (!state.rawRows.length) {
         setStatus("Carga un Excel primero.");
         return;
@@ -900,357 +739,117 @@
 
       els.btnProcess.disabled = true;
       els.btnDownloadZip.disabled = true;
+      setProgress(20);
+      setStatus("Procesando...");
 
-      revokePreviewUrls();
-
-      state.items = [];
-      state.errors = [];
-      state.manifestText = "";
-      state.rowResults = [];
-
-      const usedNames = new Set();
-      const totalRows = state.rawRows.length;
-
-      setProgress(0);
-      setStatus(`Buscando y descargando... 0/${totalRows}`);
-
-      for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
-        const row = state.rawRows[rowIndex];
-        const inputCode = String(row.modelCode || "").trim();
-        const skuFalabella = String(row.skuFalabella || "").trim();
-
-        const rowResult = {
-          rowNumber: row.rowNumber,
-          inputCode,
-          skuFalabella,
-          downloadedFiles: [],
-          ok: false
-        };
-
-        if (!inputCode || !skuFalabella) {
-          state.errors.push(`Fila ${row.rowNumber}: faltan datos.`);
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        const parsed = brand.parseCode(inputCode);
-
-        if (!parsed) {
-          state.errors.push(`Fila ${row.rowNumber}: código inválido "${inputCode}".`);
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        const candidateEntries = brand.getCandidateEntries(parsed);
-        const foundItemsForRow = [];
-        let hadCorsBlocked = false;
-
-        for (const entry of candidateEntries) {
-          const result = await fetchBlobIfExistsDetailed(entry.url);
-
-          if (result.blob) {
-            foundItemsForRow.push({
-              rowNumber: row.rowNumber,
-              inputCode,
-              foundCode: entry.displayCode,
-              skuFalabella,
-              sourceView: entry.sourceLabel,
-              imageUrl: entry.url,
-              blob: result.blob,
-              blocked: false
-            });
-          } else if (result.exists && result.corsBlocked) {
-            hadCorsBlocked = true;
-
-            foundItemsForRow.push({
-              rowNumber: row.rowNumber,
-              inputCode,
-              foundCode: entry.displayCode,
-              skuFalabella,
-              sourceView: entry.sourceLabel,
-              imageUrl: entry.url,
-              blob: null,
-              previewUrl: entry.url,
-              blocked: true
-            });
-          }
-        }
-
-        const downloadable = foundItemsForRow.filter(item => item.blob);
-
-        if (foundItemsForRow.length === 0) {
-          if (parsed.type === "exact") {
-            state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
-          } else {
-            state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
-          }
-
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        if (downloadable.length === 0 && hadCorsBlocked) {
-          state.errors.push(`Fila ${row.rowNumber}: la imagen existe, pero la web no pudo leerla para comprimirla.`);
-          state.rowResults.push(rowResult);
-          setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-          setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-          continue;
-        }
-
-        downloadable.forEach((item, index) => {
-          const finalView = index + 1;
-          const ext = guessExtension(item.blob);
-          const outputFilename = `${item.skuFalabella}_${finalView}.${ext}`;
-          const duplicateKey = outputFilename.toLowerCase();
-
-          if (usedNames.has(duplicateKey)) {
-            state.errors.push(`Fila ${item.rowNumber}: nombre repetido "${outputFilename}".`);
-            return;
-          }
-
-          usedNames.add(duplicateKey);
-
-          item.targetView = finalView;
-          item.outputFilename = outputFilename;
-          item.previewUrl = URL.createObjectURL(item.blob);
-
-          state.items.push(item);
-          rowResult.downloadedFiles.push(outputFilename);
-        });
-
-        rowResult.ok = rowResult.downloadedFiles.length > 0;
-        state.rowResults.push(rowResult);
-
-        setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-        setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-      }
-
-      state.items.sort((a, b) => {
-        if (a.rowNumber !== b.rowNumber) return a.rowNumber - b.rowNumber;
-        return a.targetView - b.targetView;
-      });
-
-      state.manifestText = buildManifestText();
-      renderSummary();
-      renderResults();
-      renderErrors();
-
-      if (state.items.length) {
-        setStatus(`${state.items.length} imagen(es) lista(s) en memoria.`);
-      } else {
-        setStatus("No se encontraron imágenes descargables.");
-      }
-
-      els.btnProcess.disabled = false;
-      els.btnDownloadZip.disabled = state.items.length === 0;
-    }
-
-    function buildManifestText() {
-      const okRows = state.rowResults.filter(row => row.ok);
-      const badRows = state.rowResults.filter(row => !row.ok);
-
-      const lines = [];
-
-      lines.push("DESCARGADO CORRECTAMENTE");
-      lines.push("");
-
-      if (okRows.length) {
-        okRows.forEach(row => {
-          lines.push(
-            `Fila ${row.rowNumber} | ${row.inputCode} | SKU ${row.skuFalabella} | ${row.downloadedFiles.join(", ")}`
-          );
-        });
-      } else {
-        lines.push("Sin registros.");
-      }
-
-      lines.push("");
-      lines.push("NO DESCARGO");
-      lines.push("");
-
-      if (badRows.length) {
-        badRows.forEach(row => {
-          lines.push(
-            `Fila ${row.rowNumber} | ${row.inputCode || "(sin código)"} | SKU ${row.skuFalabella || "(sin SKU)"}`
-          );
-        });
-      } else {
-        lines.push("Sin registros.");
-      }
-
-      return lines.join("\n");
-    }
-
-    function renderSummary() {
-      els.summaryRows.textContent = String(state.rawRows.length);
-      els.summaryReady.textContent = String(state.items.length);
-      els.summaryErrors.textContent = String(state.errors.length);
-      els.btnDownloadZip.disabled = state.items.length === 0;
-      els.activeBrandLabel.textContent = BRANDS[state.activeBrand]?.label || "";
-    }
-
-    function renderResults() {
-      if (!state.rawRows.length && !state.items.length) {
-        els.resultsPanel.innerHTML = '<div class="empty">Carga un Excel y presiona Procesar.</div>';
-        return;
-      }
-
-      if (!state.items.length) {
-        els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
-        return;
-      }
-
-      const rowsHtml = state.items.map(item => {
-        return `
-          <tr>
-            <td>${item.rowNumber}</td>
-            <td>
-              <div class="thumb">
-                <img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
-              </div>
-            </td>
-            <td class="mono">${escapeHtml(item.inputCode)}</td>
-            <td class="mono">${escapeHtml(item.foundCode)}</td>
-            <td class="mono">${escapeHtml(item.sourceView)}</td>
-            <td class="mono">${escapeHtml(item.skuFalabella)}</td>
-            <td class="mono">${escapeHtml(item.outputFilename)}</td>
-            <td><span class="chip ok">Lista</span></td>
-            <td>
-              <div class="row-actions">
-                <button class="btn btn-secondary" data-open="${escapeHtml(item.imageUrl)}">Abrir</button>
-                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}" data-code="${escapeHtml(item.foundCode)}">Descargar</button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join("");
-
-      els.resultsPanel.innerHTML = `
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Fila</th>
-                <th>Preview</th>
-                <th>Entrada</th>
-                <th>Encontrado</th>
-                <th>Vista origen</th>
-                <th>SKU Falabella</th>
-                <th>Archivo final</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-        </div>
-      `;
-
-      els.resultsPanel.querySelectorAll("[data-open]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const url = btn.getAttribute("data-open");
-          window.open(url, "_blank", "noopener,noreferrer");
-        });
-      });
-
-      els.resultsPanel.querySelectorAll("[data-download]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const rowNumber = Number(btn.getAttribute("data-download"));
-          const foundCode = btn.getAttribute("data-code");
-          const item = state.items.find(x => x.rowNumber === rowNumber && x.foundCode === foundCode);
-          if (!item) return;
-          downloadSingle(item);
-        });
-      });
-    }
-
-    function renderErrors() {
-      if (!state.errors.length) {
-        els.errorsPanel.innerHTML = "";
-        return;
-      }
-
-      els.errorsPanel.innerHTML = `
-        <section class="errors">
-          <h3>Errores</h3>
-          <ol>
-            ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
-          </ol>
-        </section>
-      `;
-    }
-
-    function downloadSingle(item) {
       try {
-        setStatus(`Descargando ${item.outputFilename}...`);
+        const response = await fetch("/api/process", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            brand: state.activeBrand,
+            rows: state.rawRows
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo procesar.");
+        }
+
+        state.jobId = data.jobId;
+        state.items = data.items || [];
+        state.errors = data.errors || [];
+        state.rowResults = data.rowResults || [];
+
+        renderSummary();
+        renderResults();
+        renderErrors();
         setProgress(100);
-        saveAs(item.blob, item.outputFilename);
-        setStatus(`Descarga completada: ${item.outputFilename}`);
+
+        if (state.items.length) {
+          setStatus(`${state.items.length} imagen(es) lista(s).`);
+        } else {
+          setStatus("No se encontraron imágenes descargables.");
+        }
       } catch (error) {
         console.error(error);
         setProgress(0);
-        setStatus(`No se pudo descargar ${item.outputFilename}.`);
+        setStatus(error.message || "No se pudo procesar.");
+      } finally {
+        els.btnProcess.disabled = false;
+        els.btnDownloadZip.disabled = !state.jobId || state.items.length === 0;
       }
     }
 
     async function downloadZip() {
-      if (!state.items.length) {
-        setStatus("No hay imágenes listas.");
-        return;
-      }
-
-      els.btnDownloadZip.disabled = true;
-      els.btnProcess.disabled = true;
+      if (!state.jobId) return;
 
       try {
-        const zip = new JSZip();
-        const total = state.items.length;
+        setStatus("Descargando ZIP...");
+        setProgress(100);
 
-        setProgress(0);
-        setStatus(`Armando ZIP... 0/${total}`);
-
-        for (let i = 0; i < state.items.length; i++) {
-          const item = state.items[i];
-          zip.file(item.outputFilename, item.blob);
-
-          const done = i + 1;
-          setProgress(Math.round((done / total) * 100));
-          setStatus(`Armando ZIP... ${done}/${total}`);
+        const response = await fetch(`/api/download/${state.jobId}`);
+        if (!response.ok) {
+          throw new Error("No se pudo descargar el ZIP.");
         }
 
-        if (state.manifestText) {
-          zip.file("manifest.txt", state.manifestText);
-        }
+        const blob = await response.blob();
+        const disposition = response.headers.get("content-disposition") || "";
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : "descarga.zip";
 
-        const zipBlob = await zip.generateAsync({ type: "blob" });
-        const zipName = buildZipName();
-
-        saveAs(zipBlob, zipName);
-        setStatus(`ZIP generado: ${zipName}`);
+        saveAs(blob, filename);
+        setStatus(`ZIP generado: ${filename}`);
       } catch (error) {
         console.error(error);
         setProgress(0);
-        setStatus("No se pudo generar el ZIP.");
-      } finally {
-        els.btnDownloadZip.disabled = state.items.length === 0;
-        els.btnProcess.disabled = false;
+        setStatus(error.message || "No se pudo descargar el ZIP.");
       }
     }
 
-    function buildZipName() {
-      const now = new Date();
-      const YYYY = now.getFullYear();
-      const MM = String(now.getMonth() + 1).padStart(2, "0");
-      const DD = String(now.getDate()).padStart(2, "0");
-      const hh = String(now.getHours()).padStart(2, "0");
-      const mm = String(now.getMinutes()).padStart(2, "0");
-      return `${state.activeBrand}-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
+    async function handleExcelChange(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      try {
+        const rows = await parseExcelFile(file);
+        state.rawRows = rows;
+        state.items = [];
+        state.errors = [];
+        state.rowResults = [];
+        state.jobId = null;
+        state.sourceFileName = file.name;
+
+        els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
+        renderSummary();
+        renderResults();
+        renderErrors();
+        setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
+        setProgress(0);
+      } catch (error) {
+        console.error(error);
+        setStatus("No se pudo leer el archivo.");
+      }
+    }
+
+    function bindEvents() {
+      els.excelFile.addEventListener("change", handleExcelChange);
+      els.btnDownloadTemplate.addEventListener("click", downloadTemplate);
+      els.btnClear.addEventListener("click", clearAll);
+      els.btnProcess.addEventListener("click", processRows);
+      els.btnDownloadZip.addEventListener("click", downloadZip);
+    }
+
+    async function init() {
+      bindEvents();
+      await loadBrands();
+      renderResults();
+      renderErrors();
+      setStatus("Esperando archivo...");
     }
 
     init();
