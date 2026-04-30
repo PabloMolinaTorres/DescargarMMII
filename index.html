@@ -416,7 +416,7 @@
       <div class="topbar">
         <div class="title-wrap">
           <h1>Descargador</h1>
-          <p id="activeBrandLabel">Mango / Kid-Teen</p>
+          <p id="activeBrandLabel">Mango Mujer / Teen / Kid</p>
         </div>
 
         <div class="actions">
@@ -530,9 +530,9 @@
     const BRANDS = {
       mango: createModelColorBrand({
         id: "mango",
-        label: "Mango / Kid-Teen",
+        label: "Mango Mujer / Teen / Kid",
         iconText: "MNG",
-        candidateViews: ["002", "001", "003", "004", "081", "084", "082", "023", "021", "030"]
+        candidateViews: ["002", "007", "001", "003", "004", "558", "081", "084", "082", "023", "021", "022", "030"]
       }),
 
       mango_man: createModelColorBrand({
@@ -808,38 +808,8 @@
       }
     }
 
-    function probeImageExists(url, timeoutMs = 4000) {
-      return new Promise(resolve => {
-        const img = new Image();
-        let done = false;
-
-        const finish = (value) => {
-          if (done) return;
-          done = true;
-          img.onload = null;
-          img.onerror = null;
-          resolve(value);
-        };
-
-        const timer = setTimeout(() => finish(false), timeoutMs);
-
-        img.onload = () => {
-          clearTimeout(timer);
-          finish(true);
-        };
-
-        img.onerror = () => {
-          clearTimeout(timer);
-          finish(false);
-        };
-
-        img.src = url + (url.includes("?") ? "&" : "?") + "_ts=" + Date.now();
-      });
-    }
-
     async function fetchBlobIfExistsDetailed(url, options = {}) {
       const fetchTimeoutMs = options.fetchTimeoutMs ?? 8000;
-      const probeTimeoutMs = options.probeTimeoutMs ?? 4000;
 
       try {
         const response = await fetchWithTimeout(url, {
@@ -851,18 +821,13 @@
         if (response.ok) {
           const blob = await response.blob();
           if (blob && blob.size > 0) {
-            return { blob, exists: true, corsBlocked: false };
+            return { blob, exists: true };
           }
         }
       } catch (error) {
       }
 
-      const exists = await probeImageExists(url, probeTimeoutMs);
-      if (exists) {
-        return { blob: null, exists: true, corsBlocked: true };
-      }
-
-      return { blob: null, exists: false, corsBlocked: false };
+      return { blob: null, exists: false };
     }
 
     function guessExtension(blob) {
@@ -998,7 +963,7 @@
           const foundItemsForRow = [];
 
           for (const entry of candidateEntries) {
-            const result = await fetchBlobIfExistsDetailed(entry.url, { fetchTimeoutMs: 8000, probeTimeoutMs: 4000 });
+            const result = await fetchBlobIfExistsDetailed(entry.url, { fetchTimeoutMs: 8000 });
 
             if (result.blob) {
               foundItemsForRow.push({
