@@ -20,6 +20,7 @@
       --border:#e5e7eb;
       --danger:#d93025;
       --ok:#15803d;
+      --warn:#f59e0b;
       --shadow:0 10px 30px rgba(0,0,0,.06);
       --radius:16px;
     }
@@ -317,6 +318,10 @@
       background:#16a34a;
     }
 
+    .etam-dot.warn{
+      background:#f59e0b;
+    }
+
     .etam-dot.error{
       background:#dc2626;
     }
@@ -402,6 +407,12 @@
       color:var(--ok);
       background:#f1fbf4;
       border-color:#cce9d3;
+    }
+
+    .chip.warn{
+      color:#8a5a00;
+      background:#fff8e7;
+      border-color:#f2d39b;
     }
 
     .mono{
@@ -542,7 +553,7 @@
 
   <script>
     const ETAM_BACKEND_URL = "https://etam-backend.vercel.app/api/process";
-    const ETAM_BATCH_SIZE = 10;
+    const ETAM_BATCH_SIZE = 5;
     const ETAM_BATCH_TIMEOUT_MS = 180000;
 
     function createModelColorBrand({ id, label, iconText, candidateViews }) {
@@ -637,7 +648,9 @@
       errors: [],
       manifestText: "",
       sourceFileName: "",
-      rowResults: []
+      rowResults: [],
+      etamFinalZipBlob: null,
+      etamFinalZipName: ""
     };
 
     const els = {
@@ -715,14 +728,17 @@
           } else {
             setStatus(`${BRANDS[brandId].label} activo.`);
           }
+
+          renderResults();
+          renderErrors();
         });
       });
     }
 
     function updateEtamUI() {
       const isEtam = state.activeBrand === "etam";
-      els.btnProcess.textContent = isEtam ? "Procesar y descargar ZIP" : "Procesar";
-      els.btnDownloadZip.style.display = isEtam ? "none" : "inline-flex";
+      els.btnProcess.textContent = isEtam ? "Procesar ETAM" : "Procesar";
+      els.btnDownloadZip.style.display = "inline-flex";
       els.etamRequestBox.style.display = isEtam ? "flex" : "none";
     }
 
@@ -793,6 +809,8 @@
         state.manifestText = "";
         state.sourceFileName = file.name;
         state.rowResults = [];
+        state.etamFinalZipBlob = null;
+        state.etamFinalZipName = "";
 
         els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
         renderSummary();
@@ -882,6 +900,9 @@
       state.manifestText = "";
       state.sourceFileName = "";
       state.rowResults = [];
+      state.etamFinalZipBlob = null;
+      state.etamFinalZipName = "";
+
       renderSummary();
       renderResults();
       renderErrors();
@@ -937,6 +958,15 @@
       return "jpg";
     }
 
+    function guessMimeFromFileName(fileName) {
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith(".avif")) return "image/avif";
+      if (lower.endsWith(".webp")) return "image/webp";
+      if (lower.endsWith(".png")) return "image/png";
+      if (lower.endsWith(".gif")) return "image/gif";
+      return "image/jpeg";
+    }
+
     function chunkRows(rows, size) {
       const chunks = [];
       for (let i = 0; i < rows.length; i += size) {
@@ -981,6 +1011,101 @@
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
       return `etam-final-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
+    }
+
+    function parseManifestLineForSuccess(line) {
+      const match = line.match(/^Fila\s+(\d+)\s+\|\s+(.*?)\s+\|\s+SKU\s+(.*?)\s+\|\s+(.*)$/);
+      if (!match) return null;
+
+      const rowNumber = Number(match[1]);
+      const inputCode = String(match[2] || "").trim();
+      const skuFalabella = String(match[3] || "").trim();
+      const filesPart = String(match[4] || "").trim();
+
+      const fileNames = filesPart
+        .split(",")
+        .map(x => x.trim())
+        .filter(Boolean);
+
+      return {
+        rowNumber,
+        inputCode,
+        skuFalabella,
+        fileNames,
+        rawLine: line
+      };
+    }
+
+    function parseManifestLineForNoDownload(line) {
+      const match = line.match(/^Fila\s+(\d+)\s+\|\s+(.*?)\s+\|\s+SKU\s+(.*)$/);
+      if (!match) return null;
+
+      return {
+        rowNumber: Number(match[1]),
+        inputCode: String(match[2] || "").trim(),
+        skuFalabella: String(match[3] || "").trim(),
+        rawLine: line
+      };
+    }
+
+    function parseBatchManifestText(manifestText) {
+      const lines = String(manifestText || "")
+        .split(/\r?\n/)
+        .map(x => x.trim())
+        .filter(Boolean);
+
+      let section = "";
+      const successEntries = [];
+      const noDownloadEntries = [];
+      const fileMetaByName = {};
+
+      for (const line of lines) {
+        const upper = line.toUpperCase();
+
+        if (upper === "DESCARGADO CORRECTAMENTE") {
+          section = "ok";
+          continue;
+        }
+
+        if (upper === "NO DESCARGO") {
+          section = "bad";
+          continue;
+        }
+
+        if (!line.startsWith("Fila ")) continue;
+
+        if (section === "ok") {
+          const entry = parseManifestLineForSuccess(line);
+          if (!entry) continue;
+
+          successEntries.push(entry);
+
+          entry.fileNames.forEach(fileName => {
+            fileMetaByName[fileName] = {
+              rowNumber: entry.rowNumber,
+              inputCode: entry.inputCode,
+              skuFalabella: entry.skuFalabella
+            };
+          });
+        }
+
+        if (section === "bad") {
+          const entry = parseManifestLineForNoDownload(line);
+          if (!entry) continue;
+          noDownloadEntries.push(entry);
+        }
+      }
+
+      return {
+        successEntries,
+        noDownloadEntries,
+        fileMetaByName
+      };
+    }
+
+    function formatNoDownloadEntry(entry, extraText = "") {
+      const suffix = extraText ? ` | ${extraText}` : "";
+      return `Fila ${entry.rowNumber} | ${entry.inputCode || "(sin código)"} | SKU ${entry.skuFalabella || "(sin SKU)"}${suffix}`;
     }
 
     async function requestEtamBatch(batchRows, batchIndex, totalBatches) {
@@ -1048,6 +1173,8 @@
       state.errors = [];
       state.manifestText = "";
       state.rowResults = [];
+      state.etamFinalZipBlob = null;
+      state.etamFinalZipName = "";
       renderSummary();
       renderResults();
       renderErrors();
@@ -1055,8 +1182,9 @@
       const chunks = chunkRows(state.rawRows, ETAM_BATCH_SIZE);
       const finalZip = new JSZip();
       const usedNames = new Set();
-      const manifestParts = [];
       const overallErrors = [];
+      const overallNoDownloadLines = [];
+      const overallSuccessLines = [];
       let totalMergedFiles = 0;
 
       setEtamRequestState("loading", `Preparando ${chunks.length} bloque(s) ETAM...`);
@@ -1077,41 +1205,122 @@
           if (batchResult.errors && batchResult.errors.length) {
             overallErrors.push(...batchResult.errors);
           }
+
+          batchRows.forEach(row => {
+            overallNoDownloadLines.push(
+              formatNoDownloadEntry({
+                rowNumber: row.rowNumber,
+                inputCode: row.modelCode,
+                skuFalabella: row.skuFalabella
+              }, `bloque ${batchNumber} falló`)
+            );
+          });
+
+          state.errors = [...overallErrors, ...overallNoDownloadLines];
+          renderErrors();
+          renderSummary();
+          renderResults();
+
+          setEtamRequestState("warn", `Bloque ${batchNumber} falló, continuando...`);
+          setStatus(`ETAM: bloque ${batchNumber} falló, continuando...`);
+          await sleep(300);
           continue;
         }
 
         try {
           const zipArrayBuffer = await batchResult.blob.arrayBuffer();
           const partialZip = await JSZip.loadAsync(zipArrayBuffer);
+          const manifestFile = partialZip.file("manifest.txt");
+          let fileMetaByName = {};
 
-          const files = Object.values(partialZip.files);
+          if (manifestFile) {
+            const manifestText = await manifestFile.async("string");
+            const parsedManifest = parseBatchManifestText(manifestText);
+
+            parsedManifest.successEntries.forEach(entry => {
+              overallSuccessLines.push(entry.rawLine);
+            });
+
+            parsedManifest.noDownloadEntries.forEach(entry => {
+              overallNoDownloadLines.push(formatNoDownloadEntry(entry));
+            });
+
+            fileMetaByName = parsedManifest.fileMetaByName;
+          }
+
+          const files = Object.values(partialZip.files).filter(file => !file.dir && file.name.toLowerCase() !== "manifest.txt");
 
           for (const file of files) {
-            if (file.dir) continue;
-
-            if (file.name.toLowerCase() === "manifest.txt") {
-              const manifestText = await file.async("string");
-              manifestParts.push(`=== BLOQUE ${batchNumber} ===\n${manifestText}`);
-              continue;
-            }
-
             const bytes = await file.async("uint8array");
-            const finalName = getUniqueFileName(file.name, usedNames);
-            finalZip.file(finalName, bytes);
+            const originalFileName = file.name;
+            const finalFileName = getUniqueFileName(originalFileName, usedNames);
+
+            finalZip.file(finalFileName, bytes);
+
+            const meta = fileMetaByName[originalFileName] || {};
+            const mime = guessMimeFromFileName(originalFileName);
+            const previewBlob = new Blob([bytes], { type: mime });
+            const previewUrl = URL.createObjectURL(previewBlob);
+
+            const outputViewMatch = originalFileName.match(/_(\d+)\.[^.]+$/i);
+            const outputView = outputViewMatch ? outputViewMatch[1] : "-";
+
+            state.items.push({
+              rowNumber: Number(meta.rowNumber || 0),
+              inputCode: meta.inputCode || "ETAM",
+              foundCode: originalFileName,
+              skuFalabella: meta.skuFalabella || "",
+              sourceView: outputView,
+              imageUrl: previewUrl,
+              previewUrl,
+              outputFilename: finalFileName,
+              blob: previewBlob
+            });
+
             totalMergedFiles += 1;
           }
+
+          state.items.sort((a, b) => {
+            if (a.rowNumber !== b.rowNumber) return a.rowNumber - b.rowNumber;
+            return String(a.outputFilename).localeCompare(String(b.outputFilename));
+          });
+
+          state.errors = [...overallErrors, ...overallNoDownloadLines];
+          renderSummary();
+          renderResults();
+          renderErrors();
+
+          const endProgress = Math.round((batchNumber / chunks.length) * 80) + 10;
+          setProgress(endProgress);
+          setEtamRequestState("loading", `Bloque ${batchNumber} de ${chunks.length} completado`);
+          setStatus(`ETAM: bloque ${batchNumber} de ${chunks.length} completado`);
+          await sleep(150);
+
         } catch (error) {
           overallErrors.push(`Bloque ${batchNumber}: no se pudo leer el ZIP parcial.`);
-        }
+          batchRows.forEach(row => {
+            overallNoDownloadLines.push(
+              formatNoDownloadEntry({
+                rowNumber: row.rowNumber,
+                inputCode: row.modelCode,
+                skuFalabella: row.skuFalabella
+              }, `zip parcial inválido en bloque ${batchNumber}`)
+            );
+          });
 
-        const endProgress = Math.round((batchNumber / chunks.length) * 80) + 10;
-        setProgress(endProgress);
-        setEtamRequestState("loading", `Bloque ${batchNumber} de ${chunks.length} completado`);
-        await sleep(150);
+          state.errors = [...overallErrors, ...overallNoDownloadLines];
+          renderErrors();
+          renderSummary();
+          renderResults();
+
+          setEtamRequestState("warn", `Bloque ${batchNumber} inválido, continuando...`);
+          setStatus(`ETAM: bloque ${batchNumber} inválido, continuando...`);
+          await sleep(300);
+        }
       }
 
       if (totalMergedFiles === 0) {
-        state.errors = overallErrors.length ? overallErrors : ["No se pudo descargar ninguna imagen ETAM."];
+        state.errors = [...overallErrors, ...overallNoDownloadLines];
         renderErrors();
         renderSummary();
         renderResults();
@@ -1132,17 +1341,28 @@
       finalManifest.push(`Archivos finales: ${totalMergedFiles}`);
       finalManifest.push("");
 
-      if (overallErrors.length) {
-        finalManifest.push("ERRORES");
-        finalManifest.push("");
-        overallErrors.forEach(error => finalManifest.push(error));
-        finalManifest.push("");
+      finalManifest.push("DESCARGADO CORRECTAMENTE");
+      finalManifest.push("");
+      if (overallSuccessLines.length) {
+        overallSuccessLines.forEach(line => finalManifest.push(line));
+      } else {
+        finalManifest.push("Sin registros.");
       }
 
-      if (manifestParts.length) {
-        finalManifest.push("DETALLE POR BLOQUES");
+      finalManifest.push("");
+      finalManifest.push("NO DESCARGO");
+      finalManifest.push("");
+      if (overallNoDownloadLines.length) {
+        overallNoDownloadLines.forEach(line => finalManifest.push(line));
+      } else {
+        finalManifest.push("Sin registros.");
+      }
+
+      if (overallErrors.length) {
         finalManifest.push("");
-        finalManifest.push(manifestParts.join("\n\n"));
+        finalManifest.push("ERRORES DE BLOQUE");
+        finalManifest.push("");
+        overallErrors.forEach(line => finalManifest.push(line));
       }
 
       finalZip.file("manifest.txt", finalManifest.join("\n"));
@@ -1150,16 +1370,25 @@
       const finalZipBlob = await finalZip.generateAsync({ type: "blob" });
       const finalZipName = buildFinalEtamZipName();
 
-      saveAs(finalZipBlob, finalZipName);
+      state.etamFinalZipBlob = finalZipBlob;
+      state.etamFinalZipName = finalZipName;
+      state.errors = [...overallErrors, ...overallNoDownloadLines];
 
-      state.errors = overallErrors;
-      renderErrors();
       renderSummary();
       renderResults();
+      renderErrors();
+
+      saveAs(finalZipBlob, finalZipName);
 
       setProgress(100);
-      setEtamRequestState("success", `ETAM listo: ${totalMergedFiles} archivo(s)`);
-      setStatus(`ZIP ETAM descargado: ${finalZipName}`);
+
+      if (overallErrors.length || overallNoDownloadLines.length) {
+        setEtamRequestState("warn", `ETAM parcial: ${totalMergedFiles} archivo(s) listos`);
+        setStatus(`ZIP parcial ETAM descargado: ${finalZipName}`);
+      } else {
+        setEtamRequestState("success", `ETAM listo: ${totalMergedFiles} archivo(s)`);
+        setStatus(`ZIP ETAM descargado: ${finalZipName}`);
+      }
     }
 
     async function processRows() {
@@ -1173,10 +1402,12 @@
 
       if (brand.id === "etam") {
         els.btnProcess.disabled = true;
+        els.btnDownloadZip.disabled = true;
         try {
           await processEtamViaBackend();
         } finally {
           els.btnProcess.disabled = false;
+          els.btnDownloadZip.disabled = !state.etamFinalZipBlob;
         }
         return;
       }
@@ -1190,6 +1421,8 @@
       state.errors = [];
       state.manifestText = "";
       state.rowResults = [];
+      state.etamFinalZipBlob = null;
+      state.etamFinalZipName = "";
 
       const usedNames = new Set();
       const totalRows = state.rawRows.length;
@@ -1350,45 +1583,53 @@
       els.summaryRows.textContent = String(state.rawRows.length);
       els.summaryReady.textContent = String(state.items.length);
       els.summaryErrors.textContent = String(state.errors.length);
-      els.btnDownloadZip.disabled = state.activeBrand === "etam" ? true : state.items.length === 0;
+
+      if (state.activeBrand === "etam") {
+        els.btnDownloadZip.disabled = !state.etamFinalZipBlob;
+      } else {
+        els.btnDownloadZip.disabled = state.items.length === 0;
+      }
+
       els.activeBrandLabel.textContent = BRANDS[state.activeBrand]?.label || "";
     }
 
     function renderResults() {
-      if (state.activeBrand === "etam" && !state.items.length) {
-        els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend en bloques automáticos. Al presionar "Procesar y descargar ZIP" se generará un solo ZIP final.</div>';
-        return;
-      }
-
       if (!state.rawRows.length && !state.items.length) {
         els.resultsPanel.innerHTML = '<div class="empty">Carga un Excel y presiona Procesar.</div>';
         return;
       }
 
       if (!state.items.length) {
-        els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
+        if (state.activeBrand === "etam") {
+          els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend en bloques automáticos. A medida que salgan bloques correctos, las imágenes aparecerán aquí abajo.</div>';
+        } else {
+          els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
+        }
         return;
       }
 
       const rowsHtml = state.items.map(item => {
+        const sourceBadge = state.activeBrand === "etam" ? "Parcial" : "Lista";
+        const sourceClass = state.activeBrand === "etam" ? "warn" : "ok";
+
         return `
           <tr>
-            <td>${item.rowNumber}</td>
+            <td>${item.rowNumber || "-"}</td>
             <td>
               <div class="thumb">
                 <img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.outputFilename)}" loading="lazy">
               </div>
             </td>
-            <td class="mono">${escapeHtml(item.inputCode)}</td>
-            <td class="mono">${escapeHtml(item.foundCode)}</td>
-            <td class="mono">${escapeHtml(item.sourceView)}</td>
-            <td class="mono">${escapeHtml(item.skuFalabella)}</td>
-            <td class="mono">${escapeHtml(item.outputFilename)}</td>
-            <td><span class="chip ok">Lista</span></td>
+            <td class="mono">${escapeHtml(item.inputCode || "-")}</td>
+            <td class="mono">${escapeHtml(item.foundCode || "-")}</td>
+            <td class="mono">${escapeHtml(item.sourceView || "-")}</td>
+            <td class="mono">${escapeHtml(item.skuFalabella || "-")}</td>
+            <td class="mono">${escapeHtml(item.outputFilename || "-")}</td>
+            <td><span class="chip ${sourceClass}">${sourceBadge}</span></td>
             <td>
               <div class="row-actions">
                 <button class="btn btn-secondary" data-open="${escapeHtml(item.imageUrl)}">Abrir</button>
-                <button class="btn btn-primary" data-download="${escapeHtml(item.rowNumber)}" data-code="${escapeHtml(item.foundCode)}">Descargar</button>
+                <button class="btn btn-primary" data-download="${escapeHtml(item.outputFilename)}">Descargar</button>
               </div>
             </td>
           </tr>
@@ -1425,9 +1666,8 @@
 
       els.resultsPanel.querySelectorAll("[data-download]").forEach(btn => {
         btn.addEventListener("click", () => {
-          const rowNumber = Number(btn.getAttribute("data-download"));
-          const foundCode = btn.getAttribute("data-code");
-          const item = state.items.find(x => x.rowNumber === rowNumber && x.foundCode === foundCode);
+          const outputFilename = btn.getAttribute("data-download");
+          const item = state.items.find(x => x.outputFilename === outputFilename);
           if (!item) return;
           downloadSingle(item);
         });
@@ -1442,7 +1682,7 @@
 
       els.errorsPanel.innerHTML = `
         <section class="errors">
-          <h3>Errores</h3>
+          <h3>Errores / No descarga</h3>
           <ol>
             ${state.errors.map(err => `<li>${escapeHtml(err)}</li>`).join("")}
           </ol>
@@ -1464,6 +1704,17 @@
     }
 
     async function downloadZip() {
+      if (state.activeBrand === "etam") {
+        if (!state.etamFinalZipBlob) {
+          setStatus("No hay ZIP ETAM listo.");
+          return;
+        }
+
+        saveAs(state.etamFinalZipBlob, state.etamFinalZipName || "etam-final.zip");
+        setStatus(`ZIP ETAM descargado: ${state.etamFinalZipName || "etam-final.zip"}`);
+        return;
+      }
+
       if (!state.items.length) {
         setStatus("No hay imágenes listas.");
         return;
