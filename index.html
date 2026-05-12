@@ -270,7 +270,7 @@
       font-weight:700;
     }
 
-    .etam-request-box{
+    .backend-request-box{
       margin-top:12px;
       padding:10px 12px;
       border:1px solid var(--border);
@@ -282,14 +282,14 @@
       gap:12px;
     }
 
-    .etam-request-left{
+    .backend-request-left{
       display:flex;
       align-items:center;
       gap:10px;
       min-width:0;
     }
 
-    .etam-request-text{
+    .backend-request-text{
       font-size:13px;
       font-weight:700;
       color:var(--text);
@@ -298,7 +298,7 @@
       text-overflow:ellipsis;
     }
 
-    .etam-dot{
+    .backend-dot{
       width:10px;
       height:10px;
       border-radius:999px;
@@ -306,37 +306,37 @@
       background:#cbd5e1;
     }
 
-    .etam-dot.idle{
+    .backend-dot.idle{
       background:#cbd5e1;
     }
 
-    .etam-dot.loading{
+    .backend-dot.loading{
       background:#f59e0b;
     }
 
-    .etam-dot.success{
+    .backend-dot.success{
       background:#16a34a;
     }
 
-    .etam-dot.warn{
+    .backend-dot.warn{
       background:#f59e0b;
     }
 
-    .etam-dot.error{
+    .backend-dot.error{
       background:#dc2626;
     }
 
-    .etam-spinner{
+    .backend-spinner{
       width:16px;
       height:16px;
       border-radius:999px;
       border:2px solid #dbe3ea;
       border-top-color:var(--green);
-      animation:etamSpin 0.8s linear infinite;
+      animation:backendSpin 0.8s linear infinite;
       flex-shrink:0;
     }
 
-    @keyframes etamSpin{
+    @keyframes backendSpin{
       to{
         transform:rotate(360deg);
       }
@@ -522,12 +522,12 @@
             <div class="pill">Errores: <span id="summaryErrors">0</span></div>
           </div>
 
-          <div class="etam-request-box" id="etamRequestBox" style="display:none;">
-            <div class="etam-request-left">
-              <span class="etam-dot idle" id="etamDot"></span>
-              <span class="etam-request-text" id="etamRequestText">ETAM en espera</span>
+          <div class="backend-request-box" id="backendRequestBox" style="display:none;">
+            <div class="backend-request-left">
+              <span class="backend-dot idle" id="backendDot"></span>
+              <span class="backend-request-text" id="backendRequestText">Backend en espera</span>
             </div>
-            <div class="etam-spinner" id="etamSpinner" style="display:none;"></div>
+            <div class="backend-spinner" id="backendSpinner" style="display:none;"></div>
           </div>
 
           <div class="status-line" id="statusLine">Esperando archivo...</div>
@@ -552,13 +552,20 @@
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <script>
-    const ETAM_BACKEND_URL = "https://etam-backend.vercel.app/api/process";
-    const ETAM_BATCH_SIZE = 5;
-    const ETAM_BATCH_TIMEOUT_MS = 180000;
+    const BACKEND_URL = "https://etam-backend.vercel.app/api/process";
 
-    const BROWNIE_LOCALES = ["es-de", "es-pt", "en-es", "en-fr", ""];
-    let brownieFeedCache = null;
-    let brownieSearchCache = new Map();
+    const BACKEND_BRANDS = {
+      etam: {
+        label: "ETAM",
+        batchSize: 5,
+        timeoutMs: 180000
+      },
+      brownie: {
+        label: "Brownie",
+        batchSize: 4,
+        timeoutMs: 180000
+      }
+    };
 
     function createModelColorBrand({ id, label, iconText, candidateViews }) {
       return {
@@ -611,323 +618,12 @@
       };
     }
 
-    function createEtamBrand() {
+    function createBackendBrand({ id, label, iconText }) {
       return {
-        id: "etam",
-        label: "ETAM",
-        iconText: "ETAM",
-        templateHeader: "Modelo etam"
-      };
-    }
-
-    function normalizeBrownieRef(value) {
-      return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    }
-
-    function brownieLocaleUrl(locale, path) {
-      if (!locale) return `https://www.browniespain.com${path}`;
-      return `https://www.browniespain.com/${locale}${path}`;
-    }
-
-    function decodeBrownieEscapedText(value) {
-      return String(value || "")
-        .replace(/\\u0026/g, "&")
-        .replace(/\\\//g, "/")
-        .replace(/&amp;/g, "&");
-    }
-
-    function uniqPreserveOrder(arr) {
-      const seen = new Set();
-      const out = [];
-      for (const item of arr) {
-        const key = String(item);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(item);
-      }
-      return out;
-    }
-
-    function cleanBrownieImageUrl(url) {
-      return decodeBrownieEscapedText(url)
-        .replace(/\\+/g, "")
-        .trim();
-    }
-
-    function extractBrownieImagesFromHtml(html) {
-      const decoded = decodeBrownieEscapedText(html);
-      const matches = decoded.match(/https:\/\/www\.browniespain\.com\/cdn\/shop\/files\/[^"'()\s<>\\]+/g) || [];
-      return uniqPreserveOrder(
-        matches
-          .map(cleanBrownieImageUrl)
-          .filter(url => /\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(url))
-      );
-    }
-
-    function extractBrownieRefFromHtml(html) {
-      const decoded = decodeBrownieEscapedText(html);
-
-      const refLabelMatch = decoded.match(/Ref:\s*([A-Z0-9-]+)/i);
-      if (refLabelMatch) return refLabelMatch[1].trim();
-
-      const refJsonMatch = decoded.match(/"reference"\s*:\s*"([^"]+)"/i);
-      if (refJsonMatch) return refJsonMatch[1].trim();
-
-      return "";
-    }
-
-    function parseBrownieFeedEntries(pageText) {
-      const entries = [];
-      const decoded = decodeBrownieEscapedText(pageText);
-
-      const entryRegex = /"reference"\s*:\s*"([^"]+)"[\s\S]*?"images"\s*:\s*\[(.*?)\][\s\S]*?"url"\s*:\s*"([^"]+)"[\s\S]*?"parent"\s*:\s*"([^"]+)"/g;
-      let match;
-
-      while ((match = entryRegex.exec(decoded)) !== null) {
-        const reference = match[1];
-        const imagesChunk = match[2];
-        const productUrl = match[3];
-        const parent = match[4];
-
-        const imageUrls = [];
-        const imageRegex = /"(https?:\/\/[^"]+)"/g;
-        let imageMatch;
-
-        while ((imageMatch = imageRegex.exec(imagesChunk)) !== null) {
-          imageUrls.push(cleanBrownieImageUrl(imageMatch[1]));
-        }
-
-        const cleanImages = uniqPreserveOrder(imageUrls).filter(Boolean);
-
-        if (!reference || !cleanImages.length) continue;
-
-        entries.push({
-          reference,
-          normalizedReference: normalizeBrownieRef(reference),
-          parent,
-          normalizedParent: normalizeBrownieRef(parent),
-          productUrl,
-          images: cleanImages
-        });
-      }
-
-      return entries;
-    }
-
-    async function fetchTextWithTimeout(url, timeoutMs = 15000) {
-      const response = await fetchWithTimeout(url, {
-        method: "GET",
-        mode: "cors",
-        cache: "no-store"
-      }, timeoutMs);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.text();
-    }
-
-    async function loadBrownieFeedEntries(forceRefresh = false) {
-      if (brownieFeedCache && !forceRefresh) {
-        return brownieFeedCache;
-      }
-
-      const dedupe = new Map();
-
-      for (const locale of BROWNIE_LOCALES) {
-        const baseUrl = brownieLocaleUrl(locale, "/pages/feed-empathy");
-
-        try {
-          const firstPageText = await fetchTextWithTimeout(baseUrl, 15000);
-          const pagesMatch = firstPageText.match(/"pages"\s*:\s*(\d+)/);
-          const totalPages = Math.max(1, Math.min(Number(pagesMatch?.[1] || 1), 8));
-
-          const firstEntries = parseBrownieFeedEntries(firstPageText);
-          for (const entry of firstEntries) {
-            const key = `${entry.normalizedReference}|${entry.productUrl}`;
-            if (!dedupe.has(key)) dedupe.set(key, entry);
-          }
-
-          for (let page = 2; page <= totalPages; page++) {
-            try {
-              const pageText = await fetchTextWithTimeout(`${baseUrl}?page=${page}`, 15000);
-              const pageEntries = parseBrownieFeedEntries(pageText);
-
-              for (const entry of pageEntries) {
-                const key = `${entry.normalizedReference}|${entry.productUrl}`;
-                if (!dedupe.has(key)) dedupe.set(key, entry);
-              }
-            } catch (_) {
-            }
-          }
-        } catch (_) {
-        }
-      }
-
-      brownieFeedCache = Array.from(dedupe.values());
-      return brownieFeedCache;
-    }
-
-    function makeBrownieHyphenVariant(raw) {
-      const clean = String(raw || "").trim();
-      if (!clean) return clean;
-
-      if (/^[A-Z]\d{2}-\d{4}-\d{6}$/i.test(clean)) {
-        return clean.replace(/^(.*)-(\d{3})(\d{3})$/, "$1-$2-$3");
-      }
-
-      if (/^[A-Z]\d{2}-\d{4}-\d{3}-\d{3}$/i.test(clean)) {
-        return clean;
-      }
-
-      return clean;
-    }
-
-    function buildBrownieSearchQueries(parsed) {
-      const raw = String(parsed.raw || "").trim();
-      const hyphenVariant = makeBrownieHyphenVariant(raw);
-      const normalized = normalizeBrownieRef(raw);
-
-      return uniqPreserveOrder([
-        raw,
-        hyphenVariant,
-        normalized
-      ].filter(Boolean));
-    }
-
-    function extractBrownieProductUrlsFromSearchHtml(html) {
-      const decoded = decodeBrownieEscapedText(html);
-      const urls = [];
-
-      const absoluteRegex = /https:\/\/www\.browniespain\.com\/(?:[a-z]{2}-[a-z]{2}\/)?products\/[^"'?#<\s]+/gi;
-      const relativeRegex = /href="(\/(?:[a-z]{2}-[a-z]{2}\/)?products\/[^"#?<\s]+)"/gi;
-
-      let match;
-      while ((match = absoluteRegex.exec(decoded)) !== null) {
-        urls.push(match[0]);
-      }
-
-      while ((match = relativeRegex.exec(decoded)) !== null) {
-        urls.push(`https://www.browniespain.com${match[1]}`);
-      }
-
-      return uniqPreserveOrder(
-        urls.map(url => decodeBrownieEscapedText(url).split("?")[0])
-      );
-    }
-
-    async function searchBrownieProductUrls(query) {
-      const cacheKey = query.toUpperCase();
-      if (brownieSearchCache.has(cacheKey)) {
-        return brownieSearchCache.get(cacheKey);
-      }
-
-      const foundUrls = [];
-
-      for (const locale of BROWNIE_LOCALES) {
-        const searchUrl = brownieLocaleUrl(locale, `/search?q=${encodeURIComponent(query)}&type=product`);
-
-        try {
-          const html = await fetchTextWithTimeout(searchUrl, 15000);
-          const urls = extractBrownieProductUrlsFromSearchHtml(html);
-          foundUrls.push(...urls);
-        } catch (_) {
-        }
-      }
-
-      const uniqueUrls = uniqPreserveOrder(foundUrls);
-      brownieSearchCache.set(cacheKey, uniqueUrls);
-      return uniqueUrls;
-    }
-
-    async function fetchBrownieProductDetail(productUrl) {
-      const html = await fetchTextWithTimeout(productUrl, 15000);
-      const reference = extractBrownieRefFromHtml(html);
-      const images = extractBrownieImagesFromHtml(html);
-
-      return {
-        productUrl,
-        reference,
-        normalizedReference: normalizeBrownieRef(reference),
-        images
-      };
-    }
-
-    function createBrownieBrand() {
-      return {
-        id: "brownie",
-        label: "Brownie",
-        iconText: "BRW",
-        templateHeader: "Modelo brownie",
-        parseCode(code) {
-          const clean = String(code || "").trim();
-          const normalized = normalizeBrownieRef(clean);
-
-          if (!clean || !normalized) return null;
-
-          return {
-            type: "base",
-            raw: clean,
-            normalized
-          };
-        },
-        async getCandidateEntries(parsed) {
-          let matched = null;
-
-          try {
-            const feedEntries = await loadBrownieFeedEntries();
-            matched = feedEntries.find(entry =>
-              entry.normalizedReference === parsed.normalized ||
-              entry.normalizedParent === parsed.normalized
-            );
-          } catch (_) {
-          }
-
-          if (!matched) {
-            const queries = buildBrownieSearchQueries(parsed);
-
-            for (const query of queries) {
-              const productUrls = await searchBrownieProductUrls(query);
-
-              for (const productUrl of productUrls) {
-                try {
-                  const detail = await fetchBrownieProductDetail(productUrl);
-                  const detailNorm = normalizeBrownieRef(detail.reference);
-
-                  if (
-                    detailNorm === parsed.normalized ||
-                    detailNorm.includes(parsed.normalized) ||
-                    parsed.normalized.includes(detailNorm)
-                  ) {
-                    matched = {
-                      reference: detail.reference || parsed.raw,
-                      normalizedReference: detailNorm || parsed.normalized,
-                      productUrl: detail.productUrl,
-                      images: detail.images || []
-                    };
-                    break;
-                  }
-                } catch (_) {
-                }
-              }
-
-              if (matched) break;
-            }
-          }
-
-          if (!matched || !matched.images || !matched.images.length) {
-            return [];
-          }
-
-          return matched.images.map((url, index) => ({
-            displayCode: `${matched.reference} [${index + 1}]`,
-            sourceLabel: String(index + 1),
-            url,
-            productUrl: matched.productUrl,
-            matchedReference: matched.reference
-          }));
-        }
+        id,
+        label,
+        iconText,
+        templateHeader: `Modelo ${label.toLowerCase()}`
       };
     }
 
@@ -953,8 +649,17 @@
         candidateViews: ["051", "016", "052", "055", "053", "054", "061", "056"]
       }),
 
-      brownie: createBrownieBrand(),
-      etam: createEtamBrand()
+      brownie: createBackendBrand({
+        id: "brownie",
+        label: "Brownie",
+        iconText: "BRW"
+      }),
+
+      etam: createBackendBrand({
+        id: "etam",
+        label: "ETAM",
+        iconText: "ETAM"
+      })
     };
 
     const state = {
@@ -965,8 +670,8 @@
       manifestText: "",
       sourceFileName: "",
       rowResults: [],
-      etamFinalZipBlob: null,
-      etamFinalZipName: ""
+      backendFinalZipBlob: null,
+      backendFinalZipName: ""
     };
 
     const els = {
@@ -985,18 +690,30 @@
       progressBar: document.getElementById("progressBar"),
       resultsPanel: document.getElementById("resultsPanel"),
       errorsPanel: document.getElementById("errorsPanel"),
-      etamRequestBox: document.getElementById("etamRequestBox"),
-      etamDot: document.getElementById("etamDot"),
-      etamRequestText: document.getElementById("etamRequestText"),
-      etamSpinner: document.getElementById("etamSpinner")
+      backendRequestBox: document.getElementById("backendRequestBox"),
+      backendDot: document.getElementById("backendDot"),
+      backendRequestText: document.getElementById("backendRequestText"),
+      backendSpinner: document.getElementById("backendSpinner")
     };
+
+    function isBackendBrand(brandId) {
+      return Boolean(BACKEND_BRANDS[brandId]);
+    }
+
+    function getBackendConfig(brandId) {
+      return BACKEND_BRANDS[brandId] || null;
+    }
+
+    function getActiveBrand() {
+      return BRANDS[state.activeBrand];
+    }
 
     function init() {
       renderBrands();
       bindEvents();
       renderSummary();
       updateSpecialUI();
-      setEtamRequestState("idle", "ETAM en espera");
+      setBackendRequestState("idle", "Backend en espera");
     }
 
     function bindEvents() {
@@ -1032,17 +749,16 @@
         btn.addEventListener("click", () => {
           const brandId = btn.getAttribute("data-brand");
           if (!BRANDS[brandId]) return;
+
           state.activeBrand = brandId;
           renderBrands();
           renderSummary();
           updateSpecialUI();
           els.activeBrandLabel.textContent = BRANDS[brandId].label;
 
-          if (brandId === "etam") {
-            setStatus("ETAM usa backend y procesamiento por bloques automáticos.");
-            setEtamRequestState("idle", "ETAM en espera");
-          } else if (brandId === "brownie") {
-            setStatus("Brownie: primero feed multi-locale, luego búsqueda interna, luego PDP.");
+          if (isBackendBrand(brandId)) {
+            setStatus(`${BRANDS[brandId].label} usa backend por bloques automáticos.`);
+            setBackendRequestState("idle", `${BRANDS[brandId].label} en espera`);
           } else {
             setStatus(`${BRANDS[brandId].label} activo.`);
           }
@@ -1054,16 +770,23 @@
     }
 
     function updateSpecialUI() {
-      const isEtam = state.activeBrand === "etam";
-      els.btnProcess.textContent = isEtam ? "Procesar ETAM" : "Procesar";
+      const backendBrand = isBackendBrand(state.activeBrand);
+
+      if (backendBrand) {
+        els.btnProcess.textContent = `Procesar ${BRANDS[state.activeBrand].label}`;
+        els.backendRequestBox.style.display = "flex";
+      } else {
+        els.btnProcess.textContent = "Procesar";
+        els.backendRequestBox.style.display = "none";
+      }
+
       els.btnDownloadZip.style.display = "inline-flex";
-      els.etamRequestBox.style.display = isEtam ? "flex" : "none";
     }
 
-    function setEtamRequestState(mode, text) {
-      els.etamRequestText.textContent = text;
-      els.etamDot.className = `etam-dot ${mode}`;
-      els.etamSpinner.style.display = mode === "loading" ? "block" : "none";
+    function setBackendRequestState(mode, text) {
+      els.backendRequestText.textContent = text;
+      els.backendDot.className = `backend-dot ${mode}`;
+      els.backendSpinner.style.display = mode === "loading" ? "block" : "none";
     }
 
     function setStatus(text) {
@@ -1136,19 +859,17 @@
         state.manifestText = "";
         state.sourceFileName = file.name;
         state.rowResults = [];
-        state.etamFinalZipBlob = null;
-        state.etamFinalZipName = "";
+        state.backendFinalZipBlob = null;
+        state.backendFinalZipName = "";
 
         els.fileMeta.textContent = `${file.name} · ${rows.length} fila(s)`;
         renderSummary();
         renderResults();
         renderErrors();
 
-        if (state.activeBrand === "etam") {
-          setStatus(`${rows.length} fila(s) cargada(s). ETAM se procesará por bloques automáticos.`);
-          setEtamRequestState("idle", "ETAM listo para procesar");
-        } else if (state.activeBrand === "brownie") {
-          setStatus(`${rows.length} fila(s) cargada(s). Brownie usará la columna MODELO.`);
+        if (isBackendBrand(state.activeBrand)) {
+          setStatus(`${rows.length} fila(s) cargada(s). ${BRANDS[state.activeBrand].label} se procesará por bloques.`);
+          setBackendRequestState("idle", `${BRANDS[state.activeBrand].label} listo para procesar`);
         } else {
           setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
         }
@@ -1157,8 +878,9 @@
       } catch (error) {
         console.error(error);
         setStatus("No se pudo leer el archivo.");
-        if (state.activeBrand === "etam") {
-          setEtamRequestState("error", "Error leyendo el Excel");
+
+        if (isBackendBrand(state.activeBrand)) {
+          setBackendRequestState("error", `Error leyendo Excel de ${BRANDS[state.activeBrand].label}`);
         }
       }
     }
@@ -1201,7 +923,7 @@
 
     function downloadTemplate() {
       try {
-        const activeBrand = BRANDS[state.activeBrand];
+        const activeBrand = getActiveBrand();
         const data = [
           { [activeBrand.templateHeader]: "", "Sku falabella": "" }
         ];
@@ -1229,8 +951,8 @@
       state.manifestText = "";
       state.sourceFileName = "";
       state.rowResults = [];
-      state.etamFinalZipBlob = null;
-      state.etamFinalZipName = "";
+      state.backendFinalZipBlob = null;
+      state.backendFinalZipName = "";
 
       renderSummary();
       renderResults();
@@ -1238,8 +960,8 @@
       setStatus("Limpio.");
       setProgress(0);
 
-      if (state.activeBrand === "etam") {
-        setEtamRequestState("idle", "ETAM en espera");
+      if (isBackendBrand(state.activeBrand)) {
+        setBackendRequestState("idle", `${BRANDS[state.activeBrand].label} en espera`);
       }
     }
 
@@ -1273,7 +995,7 @@
             return { blob, exists: true };
           }
         }
-      } catch (error) {
+      } catch (_) {
       }
 
       return { blob: null, exists: false };
@@ -1332,14 +1054,14 @@
       return candidate;
     }
 
-    function buildFinalEtamZipName() {
+    function buildFinalBackendZipName(brandId) {
       const now = new Date();
       const YYYY = now.getFullYear();
       const MM = String(now.getMonth() + 1).padStart(2, "0");
       const DD = String(now.getDate()).padStart(2, "0");
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
-      return `etam-final-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
+      return `${brandId}-final-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
     }
 
     function parseManifestLineForSuccess(line) {
@@ -1437,23 +1159,25 @@
       return `Fila ${entry.rowNumber} | ${entry.inputCode || "(sin código)"} | SKU ${entry.skuFalabella || "(sin SKU)"}${suffix}`;
     }
 
-    async function requestEtamBatch(batchRows, batchIndex, totalBatches) {
+    async function requestBackendBatch(brandId, batchRows, batchIndex, totalBatches) {
+      const config = getBackendConfig(brandId);
       const maxAttempts = 2;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          setEtamRequestState("loading", `Procesando bloque ${batchIndex} de ${totalBatches}... intento ${attempt}/${maxAttempts}`);
-          setStatus(`ETAM: procesando bloque ${batchIndex} de ${totalBatches}...`);
+          setBackendRequestState("loading", `${config.label}: bloque ${batchIndex} de ${totalBatches}... intento ${attempt}/${maxAttempts}`);
+          setStatus(`${config.label}: procesando bloque ${batchIndex} de ${totalBatches}...`);
 
-          const response = await fetchWithTimeout(ETAM_BACKEND_URL, {
+          const response = await fetchWithTimeout(BACKEND_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
+              brand: brandId,
               rows: batchRows
             })
-          }, ETAM_BATCH_TIMEOUT_MS);
+          }, config.timeoutMs);
 
           const contentType = response.headers.get("content-type") || "";
 
@@ -1495,20 +1219,22 @@
       };
     }
 
-    async function processEtamViaBackend() {
+    async function processBackendBrand(brandId) {
+      const config = getBackendConfig(brandId);
+
       revokePreviewUrls();
 
       state.items = [];
       state.errors = [];
       state.manifestText = "";
       state.rowResults = [];
-      state.etamFinalZipBlob = null;
-      state.etamFinalZipName = "";
+      state.backendFinalZipBlob = null;
+      state.backendFinalZipName = "";
       renderSummary();
       renderResults();
       renderErrors();
 
-      const chunks = chunkRows(state.rawRows, ETAM_BATCH_SIZE);
+      const chunks = chunkRows(state.rawRows, config.batchSize);
       const finalZip = new JSZip();
       const usedNames = new Set();
       const overallErrors = [];
@@ -1516,8 +1242,8 @@
       const overallSuccessLines = [];
       let totalMergedFiles = 0;
 
-      setEtamRequestState("loading", `Preparando ${chunks.length} bloque(s) ETAM...`);
-      setStatus(`ETAM: preparando ${chunks.length} bloque(s)...`);
+      setBackendRequestState("loading", `${config.label}: preparando ${chunks.length} bloque(s)...`);
+      setStatus(`${config.label}: preparando ${chunks.length} bloque(s)...`);
       setProgress(5);
 
       for (let i = 0; i < chunks.length; i++) {
@@ -1527,7 +1253,7 @@
         const startProgress = Math.round((i / chunks.length) * 80) + 10;
         setProgress(startProgress);
 
-        const batchResult = await requestEtamBatch(batchRows, batchNumber, chunks.length);
+        const batchResult = await requestBackendBatch(brandId, batchRows, batchNumber, chunks.length);
 
         if (!batchResult.ok) {
           overallErrors.push(batchResult.error);
@@ -1550,8 +1276,8 @@
           renderSummary();
           renderResults();
 
-          setEtamRequestState("warn", `Bloque ${batchNumber} falló, continuando...`);
-          setStatus(`ETAM: bloque ${batchNumber} falló, continuando...`);
+          setBackendRequestState("warn", `${config.label}: bloque ${batchNumber} falló, continuando...`);
+          setStatus(`${config.label}: bloque ${batchNumber} falló, continuando...`);
           await sleep(300);
           continue;
         }
@@ -1596,7 +1322,7 @@
 
             state.items.push({
               rowNumber: Number(meta.rowNumber || 0),
-              inputCode: meta.inputCode || "ETAM",
+              inputCode: meta.inputCode || config.label,
               foundCode: originalFileName,
               skuFalabella: meta.skuFalabella || "",
               sourceView: outputView,
@@ -1621,8 +1347,8 @@
 
           const endProgress = Math.round((batchNumber / chunks.length) * 80) + 10;
           setProgress(endProgress);
-          setEtamRequestState("loading", `Bloque ${batchNumber} de ${chunks.length} completado`);
-          setStatus(`ETAM: bloque ${batchNumber} de ${chunks.length} completado`);
+          setBackendRequestState("loading", `${config.label}: bloque ${batchNumber} de ${chunks.length} completado`);
+          setStatus(`${config.label}: bloque ${batchNumber} de ${chunks.length} completado`);
           await sleep(150);
 
         } catch (error) {
@@ -1642,8 +1368,8 @@
           renderSummary();
           renderResults();
 
-          setEtamRequestState("warn", `Bloque ${batchNumber} inválido, continuando...`);
-          setStatus(`ETAM: bloque ${batchNumber} inválido, continuando...`);
+          setBackendRequestState("warn", `${config.label}: bloque ${batchNumber} inválido, continuando...`);
+          setStatus(`${config.label}: bloque ${batchNumber} inválido, continuando...`);
           await sleep(300);
         }
       }
@@ -1653,18 +1379,18 @@
         renderErrors();
         renderSummary();
         renderResults();
-        setEtamRequestState("error", "ETAM con error");
+        setBackendRequestState("error", `${config.label} con error`);
         setProgress(0);
-        setStatus(state.errors[0] || "No se pudo procesar ETAM.");
+        setStatus(state.errors[0] || `No se pudo procesar ${config.label}.`);
         return;
       }
 
-      setEtamRequestState("loading", "Uniendo archivos ETAM...");
-      setStatus("ETAM: uniendo archivos...");
+      setBackendRequestState("loading", `${config.label}: uniendo archivos...`);
+      setStatus(`${config.label}: uniendo archivos...`);
       setProgress(94);
 
       const finalManifest = [];
-      finalManifest.push("MANIFEST FINAL ETAM");
+      finalManifest.push(`MANIFEST FINAL ${config.label.toUpperCase()}`);
       finalManifest.push("");
       finalManifest.push(`Bloques procesados: ${chunks.length}`);
       finalManifest.push(`Archivos finales: ${totalMergedFiles}`);
@@ -1697,10 +1423,10 @@
       finalZip.file("manifest.txt", finalManifest.join("\n"));
 
       const finalZipBlob = await finalZip.generateAsync({ type: "blob" });
-      const finalZipName = buildFinalEtamZipName();
+      const finalZipName = buildFinalBackendZipName(brandId);
 
-      state.etamFinalZipBlob = finalZipBlob;
-      state.etamFinalZipName = finalZipName;
+      state.backendFinalZipBlob = finalZipBlob;
+      state.backendFinalZipName = finalZipName;
       state.errors = [...overallErrors, ...overallNoDownloadLines];
 
       renderSummary();
@@ -1712,16 +1438,16 @@
       setProgress(100);
 
       if (overallErrors.length || overallNoDownloadLines.length) {
-        setEtamRequestState("warn", `ETAM parcial: ${totalMergedFiles} archivo(s) listos`);
-        setStatus(`ZIP parcial ETAM descargado: ${finalZipName}`);
+        setBackendRequestState("warn", `${config.label} parcial: ${totalMergedFiles} archivo(s) listos`);
+        setStatus(`ZIP parcial ${config.label} descargado: ${finalZipName}`);
       } else {
-        setEtamRequestState("success", `ETAM listo: ${totalMergedFiles} archivo(s)`);
-        setStatus(`ZIP ETAM descargado: ${finalZipName}`);
+        setBackendRequestState("success", `${config.label} listo: ${totalMergedFiles} archivo(s)`);
+        setStatus(`ZIP ${config.label} descargado: ${finalZipName}`);
       }
     }
 
     async function processRows() {
-      const brand = BRANDS[state.activeBrand];
+      const brand = getActiveBrand();
       if (!brand) return;
 
       if (!state.rawRows.length) {
@@ -1729,15 +1455,17 @@
         return;
       }
 
-      if (brand.id === "etam") {
+      if (isBackendBrand(brand.id)) {
         els.btnProcess.disabled = true;
         els.btnDownloadZip.disabled = true;
+
         try {
-          await processEtamViaBackend();
+          await processBackendBrand(brand.id);
         } finally {
           els.btnProcess.disabled = false;
-          els.btnDownloadZip.disabled = !state.etamFinalZipBlob;
+          els.btnDownloadZip.disabled = !state.backendFinalZipBlob;
         }
+
         return;
       }
 
@@ -1750,8 +1478,8 @@
       state.errors = [];
       state.manifestText = "";
       state.rowResults = [];
-      state.etamFinalZipBlob = null;
-      state.etamFinalZipName = "";
+      state.backendFinalZipBlob = null;
+      state.backendFinalZipName = "";
 
       const usedNames = new Set();
       const totalRows = state.rawRows.length;
@@ -1760,14 +1488,6 @@
       setStatus(`Buscando y descargando... 0/${totalRows}`);
 
       try {
-        if (brand.id === "brownie") {
-          setStatus("Brownie: cargando feeds y fallback...");
-          try {
-            await loadBrownieFeedEntries(true);
-          } catch (_) {
-          }
-        }
-
         for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
           const row = state.rawRows[rowIndex];
           const inputCode = String(row.modelCode || "").trim();
@@ -1799,21 +1519,7 @@
             continue;
           }
 
-          let candidateEntries = [];
-          try {
-            candidateEntries = await Promise.resolve(brand.getCandidateEntries(parsed));
-          } catch (error) {
-            if (brand.id === "brownie") {
-              state.errors.push(`Fila ${row.rowNumber}: Brownie no pudo resolver la referencia desde feed/búsqueda/PDP.`);
-            } else {
-              state.errors.push(`Fila ${row.rowNumber}: no se pudieron resolver vistas para "${inputCode}".`);
-            }
-            state.rowResults.push(rowResult);
-            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
-            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
-            continue;
-          }
-
+          const candidateEntries = brand.getCandidateEntries(parsed);
           const foundItemsForRow = [];
 
           for (const entry of candidateEntries) {
@@ -1833,9 +1539,7 @@
           }
 
           if (foundItemsForRow.length === 0) {
-            if (brand.id === "brownie") {
-              state.errors.push(`Fila ${row.rowNumber}: Brownie no encontró imágenes para "${inputCode}". Si se repite mucho, pasamos Brownie a lógica tipo ETAM.`);
-            } else if (parsed.type === "exact") {
+            if (parsed.type === "exact") {
               state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
             } else {
               state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
@@ -1892,7 +1596,7 @@
         }
       } finally {
         els.btnProcess.disabled = false;
-        els.btnDownloadZip.disabled = state.items.length === 0 && !state.etamFinalZipBlob;
+        els.btnDownloadZip.disabled = state.items.length === 0;
       }
     }
 
@@ -1937,8 +1641,8 @@
       els.summaryReady.textContent = String(state.items.length);
       els.summaryErrors.textContent = String(state.errors.length);
 
-      if (state.activeBrand === "etam") {
-        els.btnDownloadZip.disabled = !state.etamFinalZipBlob;
+      if (isBackendBrand(state.activeBrand)) {
+        els.btnDownloadZip.disabled = !state.backendFinalZipBlob;
       } else {
         els.btnDownloadZip.disabled = state.items.length === 0;
       }
@@ -1953,10 +1657,8 @@
       }
 
       if (!state.items.length) {
-        if (state.activeBrand === "etam") {
-          els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend en bloques automáticos. A medida que salgan bloques correctos, las imágenes aparecerán aquí abajo.</div>';
-        } else if (state.activeBrand === "brownie") {
-          els.resultsPanel.innerHTML = '<div class="empty">Brownie intenta en este orden: feed multi-locale → búsqueda interna → PDP del producto.</div>';
+        if (isBackendBrand(state.activeBrand)) {
+          els.resultsPanel.innerHTML = `<div class="empty">${escapeHtml(BRANDS[state.activeBrand].label)} se procesa por backend en bloques automáticos. A medida que salgan bloques correctos, las imágenes aparecerán aquí abajo.</div>`;
         } else {
           els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
         }
@@ -1964,8 +1666,8 @@
       }
 
       const rowsHtml = state.items.map(item => {
-        const sourceBadge = state.activeBrand === "etam" ? "Parcial" : "Lista";
-        const sourceClass = state.activeBrand === "etam" ? "warn" : "ok";
+        const sourceBadge = isBackendBrand(state.activeBrand) ? "Parcial" : "Lista";
+        const sourceClass = isBackendBrand(state.activeBrand) ? "warn" : "ok";
 
         return `
           <tr>
@@ -2059,14 +1761,14 @@
     }
 
     async function downloadZip() {
-      if (state.activeBrand === "etam") {
-        if (!state.etamFinalZipBlob) {
-          setStatus("No hay ZIP ETAM listo.");
+      if (isBackendBrand(state.activeBrand)) {
+        if (!state.backendFinalZipBlob) {
+          setStatus("No hay ZIP listo.");
           return;
         }
 
-        saveAs(state.etamFinalZipBlob, state.etamFinalZipName || "etam-final.zip");
-        setStatus(`ZIP ETAM descargado: ${state.etamFinalZipName || "etam-final.zip"}`);
+        saveAs(state.backendFinalZipBlob, state.backendFinalZipName || "backend-final.zip");
+        setStatus(`ZIP descargado: ${state.backendFinalZipName || "backend-final.zip"}`);
         return;
       }
 
