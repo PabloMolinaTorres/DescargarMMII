@@ -269,6 +269,74 @@
       font-weight:700;
     }
 
+    .etam-request-box{
+      margin-top:12px;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+
+    .etam-request-left{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:0;
+    }
+
+    .etam-request-text{
+      font-size:13px;
+      font-weight:700;
+      color:var(--text);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .etam-dot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      flex-shrink:0;
+      background:#cbd5e1;
+    }
+
+    .etam-dot.idle{
+      background:#cbd5e1;
+    }
+
+    .etam-dot.loading{
+      background:#f59e0b;
+    }
+
+    .etam-dot.success{
+      background:#16a34a;
+    }
+
+    .etam-dot.error{
+      background:#dc2626;
+    }
+
+    .etam-spinner{
+      width:16px;
+      height:16px;
+      border-radius:999px;
+      border:2px solid #dbe3ea;
+      border-top-color:var(--green);
+      animation:etamSpin 0.8s linear infinite;
+      flex-shrink:0;
+    }
+
+    @keyframes etamSpin{
+      to{
+        transform:rotate(360deg);
+      }
+    }
+
     .table-wrap{
       overflow:auto;
     }
@@ -443,6 +511,14 @@
             <div class="pill">Errores: <span id="summaryErrors">0</span></div>
           </div>
 
+          <div class="etam-request-box" id="etamRequestBox" style="display:none;">
+            <div class="etam-request-left">
+              <span class="etam-dot idle" id="etamDot"></span>
+              <span class="etam-request-text" id="etamRequestText">ETAM en espera</span>
+            </div>
+            <div class="etam-spinner" id="etamSpinner" style="display:none;"></div>
+          </div>
+
           <div class="status-line" id="statusLine">Esperando archivo...</div>
           <div class="progress">
             <div class="progress-bar" id="progressBar"></div>
@@ -466,6 +542,8 @@
 
   <script>
     const ETAM_BACKEND_URL = "https://etam-backend.vercel.app/api/process";
+    const ETAM_BATCH_SIZE = 10;
+    const ETAM_BATCH_TIMEOUT_MS = 180000;
 
     function createModelColorBrand({ id, label, iconText, candidateViews }) {
       return {
@@ -577,7 +655,11 @@
       statusLine: document.getElementById("statusLine"),
       progressBar: document.getElementById("progressBar"),
       resultsPanel: document.getElementById("resultsPanel"),
-      errorsPanel: document.getElementById("errorsPanel")
+      errorsPanel: document.getElementById("errorsPanel"),
+      etamRequestBox: document.getElementById("etamRequestBox"),
+      etamDot: document.getElementById("etamDot"),
+      etamRequestText: document.getElementById("etamRequestText"),
+      etamSpinner: document.getElementById("etamSpinner")
     };
 
     function init() {
@@ -585,6 +667,7 @@
       bindEvents();
       renderSummary();
       updateEtamUI();
+      setEtamRequestState("idle", "ETAM en espera");
     }
 
     function bindEvents() {
@@ -627,7 +710,8 @@
           els.activeBrandLabel.textContent = BRANDS[brandId].label;
 
           if (brandId === "etam") {
-            setStatus("ETAM usa backend. Al presionar Procesar se descargará el ZIP.");
+            setStatus("ETAM usa backend y procesamiento por bloques automáticos.");
+            setEtamRequestState("idle", "ETAM en espera");
           } else {
             setStatus(`${BRANDS[brandId].label} activo.`);
           }
@@ -639,6 +723,13 @@
       const isEtam = state.activeBrand === "etam";
       els.btnProcess.textContent = isEtam ? "Procesar y descargar ZIP" : "Procesar";
       els.btnDownloadZip.style.display = isEtam ? "none" : "inline-flex";
+      els.etamRequestBox.style.display = isEtam ? "flex" : "none";
+    }
+
+    function setEtamRequestState(mode, text) {
+      els.etamRequestText.textContent = text;
+      els.etamDot.className = `etam-dot ${mode}`;
+      els.etamSpinner.style.display = mode === "loading" ? "block" : "none";
     }
 
     function setStatus(text) {
@@ -709,7 +800,8 @@
         renderErrors();
 
         if (state.activeBrand === "etam") {
-          setStatus(`${rows.length} fila(s) cargada(s). ETAM descargará el ZIP desde el backend.`);
+          setStatus(`${rows.length} fila(s) cargada(s). ETAM se procesará por bloques automáticos.`);
+          setEtamRequestState("idle", "ETAM listo para procesar");
         } else {
           setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
         }
@@ -718,6 +810,9 @@
       } catch (error) {
         console.error(error);
         setStatus("No se pudo leer el archivo.");
+        if (state.activeBrand === "etam") {
+          setEtamRequestState("error", "Error leyendo el Excel");
+        }
       }
     }
 
@@ -792,6 +887,10 @@
       renderErrors();
       setStatus("Limpio.");
       setProgress(0);
+
+      if (state.activeBrand === "etam") {
+        setEtamRequestState("idle", "ETAM en espera");
+      }
     }
 
     async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
@@ -838,58 +937,229 @@
       return "jpg";
     }
 
-    async function processEtamViaBackend() {
-      try {
-        setProgress(15);
-        setStatus("Enviando ETAM al backend...");
+    function chunkRows(rows, size) {
+      const chunks = [];
+      for (let i = 0; i < rows.length; i += size) {
+        chunks.push(rows.slice(i, i + size));
+      }
+      return chunks;
+    }
 
-        const response = await fetch(ETAM_BACKEND_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            rows: state.rawRows
-          })
-        });
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
-        const contentType = response.headers.get("content-type") || "";
+    function getUniqueFileName(fileName, usedNames) {
+      const lower = fileName.toLowerCase();
+      if (!usedNames.has(lower)) {
+        usedNames.add(lower);
+        return fileName;
+      }
 
-        if (!response.ok) {
-          if (contentType.includes("application/json")) {
-            const data = await response.json();
-            state.errors = Array.isArray(data.errors) ? data.errors : [data.error || "No se pudo procesar ETAM."];
-            renderErrors();
-            renderSummary();
-            setProgress(0);
-            setStatus(state.errors[0] || "No se pudo procesar ETAM.");
-            return;
+      const dotIndex = fileName.lastIndexOf(".");
+      const hasExt = dotIndex > 0;
+      const base = hasExt ? fileName.slice(0, dotIndex) : fileName;
+      const ext = hasExt ? fileName.slice(dotIndex) : "";
+
+      let counter = 1;
+      let candidate = `${base}__dup${counter}${ext}`;
+
+      while (usedNames.has(candidate.toLowerCase())) {
+        counter += 1;
+        candidate = `${base}__dup${counter}${ext}`;
+      }
+
+      usedNames.add(candidate.toLowerCase());
+      return candidate;
+    }
+
+    function buildFinalEtamZipName() {
+      const now = new Date();
+      const YYYY = now.getFullYear();
+      const MM = String(now.getMonth() + 1).padStart(2, "0");
+      const DD = String(now.getDate()).padStart(2, "0");
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      return `etam-final-${YYYY}${MM}${DD}-${hh}${mm}.zip`;
+    }
+
+    async function requestEtamBatch(batchRows, batchIndex, totalBatches) {
+      const maxAttempts = 2;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          setEtamRequestState("loading", `Procesando bloque ${batchIndex} de ${totalBatches}... intento ${attempt}/${maxAttempts}`);
+          setStatus(`ETAM: procesando bloque ${batchIndex} de ${totalBatches}...`);
+
+          const response = await fetchWithTimeout(ETAM_BACKEND_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              rows: batchRows
+            })
+          }, ETAM_BATCH_TIMEOUT_MS);
+
+          const contentType = response.headers.get("content-type") || "";
+
+          if (!response.ok) {
+            if (contentType.includes("application/json")) {
+              const data = await response.json();
+              return {
+                ok: false,
+                error: data.error || `Error en bloque ${batchIndex}.`,
+                errors: Array.isArray(data.errors) ? data.errors : []
+              };
+            }
+
+            return {
+              ok: false,
+              error: `Error HTTP ${response.status} en bloque ${batchIndex}.`,
+              errors: []
+            };
           }
 
-          throw new Error("No se pudo procesar ETAM.");
+          const blob = await response.blob();
+          return { ok: true, blob };
+        } catch (error) {
+          if (attempt === maxAttempts) {
+            return {
+              ok: false,
+              error: `Bloque ${batchIndex}: ${error.message || "Failed to fetch"}`,
+              errors: []
+            };
+          }
+          await sleep(800);
+        }
+      }
+
+      return {
+        ok: false,
+        error: `Bloque ${batchIndex}: error desconocido.`,
+        errors: []
+      };
+    }
+
+    async function processEtamViaBackend() {
+      revokePreviewUrls();
+
+      state.items = [];
+      state.errors = [];
+      state.manifestText = "";
+      state.rowResults = [];
+      renderSummary();
+      renderResults();
+      renderErrors();
+
+      const chunks = chunkRows(state.rawRows, ETAM_BATCH_SIZE);
+      const finalZip = new JSZip();
+      const usedNames = new Set();
+      const manifestParts = [];
+      const overallErrors = [];
+      let totalMergedFiles = 0;
+
+      setEtamRequestState("loading", `Preparando ${chunks.length} bloque(s) ETAM...`);
+      setStatus(`ETAM: preparando ${chunks.length} bloque(s)...`);
+      setProgress(5);
+
+      for (let i = 0; i < chunks.length; i++) {
+        const batchNumber = i + 1;
+        const batchRows = chunks[i];
+
+        const startProgress = Math.round((i / chunks.length) * 80) + 10;
+        setProgress(startProgress);
+
+        const batchResult = await requestEtamBatch(batchRows, batchNumber, chunks.length);
+
+        if (!batchResult.ok) {
+          overallErrors.push(batchResult.error);
+          if (batchResult.errors && batchResult.errors.length) {
+            overallErrors.push(...batchResult.errors);
+          }
+          continue;
         }
 
-        const blob = await response.blob();
-        const disposition = response.headers.get("content-disposition") || "";
-        const match = disposition.match(/filename="([^"]+)"/);
-        const filename = match ? match[1] : "etam.zip";
+        try {
+          const zipArrayBuffer = await batchResult.blob.arrayBuffer();
+          const partialZip = await JSZip.loadAsync(zipArrayBuffer);
 
-        state.items = [];
-        state.errors = [];
-        state.manifestText = "";
-        state.rowResults = [];
+          const files = Object.values(partialZip.files);
+
+          for (const file of files) {
+            if (file.dir) continue;
+
+            if (file.name.toLowerCase() === "manifest.txt") {
+              const manifestText = await file.async("string");
+              manifestParts.push(`=== BLOQUE ${batchNumber} ===\n${manifestText}`);
+              continue;
+            }
+
+            const bytes = await file.async("uint8array");
+            const finalName = getUniqueFileName(file.name, usedNames);
+            finalZip.file(finalName, bytes);
+            totalMergedFiles += 1;
+          }
+        } catch (error) {
+          overallErrors.push(`Bloque ${batchNumber}: no se pudo leer el ZIP parcial.`);
+        }
+
+        const endProgress = Math.round((batchNumber / chunks.length) * 80) + 10;
+        setProgress(endProgress);
+        setEtamRequestState("loading", `Bloque ${batchNumber} de ${chunks.length} completado`);
+        await sleep(150);
+      }
+
+      if (totalMergedFiles === 0) {
+        state.errors = overallErrors.length ? overallErrors : ["No se pudo descargar ninguna imagen ETAM."];
+        renderErrors();
         renderSummary();
         renderResults();
-        renderErrors();
-
-        saveAs(blob, filename);
-        setProgress(100);
-        setStatus(`ZIP ETAM descargado: ${filename}`);
-      } catch (error) {
-        console.error(error);
+        setEtamRequestState("error", "ETAM con error");
         setProgress(0);
-        setStatus(error.message || "No se pudo procesar ETAM.");
+        setStatus(state.errors[0] || "No se pudo procesar ETAM.");
+        return;
       }
+
+      setEtamRequestState("loading", "Uniendo archivos ETAM...");
+      setStatus("ETAM: uniendo archivos...");
+      setProgress(94);
+
+      const finalManifest = [];
+      finalManifest.push("MANIFEST FINAL ETAM");
+      finalManifest.push("");
+      finalManifest.push(`Bloques procesados: ${chunks.length}`);
+      finalManifest.push(`Archivos finales: ${totalMergedFiles}`);
+      finalManifest.push("");
+
+      if (overallErrors.length) {
+        finalManifest.push("ERRORES");
+        finalManifest.push("");
+        overallErrors.forEach(error => finalManifest.push(error));
+        finalManifest.push("");
+      }
+
+      if (manifestParts.length) {
+        finalManifest.push("DETALLE POR BLOQUES");
+        finalManifest.push("");
+        finalManifest.push(manifestParts.join("\n\n"));
+      }
+
+      finalZip.file("manifest.txt", finalManifest.join("\n"));
+
+      const finalZipBlob = await finalZip.generateAsync({ type: "blob" });
+      const finalZipName = buildFinalEtamZipName();
+
+      saveAs(finalZipBlob, finalZipName);
+
+      state.errors = overallErrors;
+      renderErrors();
+      renderSummary();
+      renderResults();
+
+      setProgress(100);
+      setEtamRequestState("success", `ETAM listo: ${totalMergedFiles} archivo(s)`);
+      setStatus(`ZIP ETAM descargado: ${finalZipName}`);
     }
 
     async function processRows() {
@@ -1086,7 +1356,7 @@
 
     function renderResults() {
       if (state.activeBrand === "etam" && !state.items.length) {
-        els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend. Al presionar "Procesar y descargar ZIP" se descargará el archivo final.</div>';
+        els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend en bloques automáticos. Al presionar "Procesar y descargar ZIP" se generará un solo ZIP final.</div>';
         return;
       }
 
