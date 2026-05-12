@@ -556,6 +556,9 @@
     const ETAM_BATCH_SIZE = 5;
     const ETAM_BATCH_TIMEOUT_MS = 180000;
 
+    const BROWNIE_FEED_BASE = "https://www.browniespain.com/es-de/pages/feed-empathy";
+    let brownieFeedCache = null;
+
     function createModelColorBrand({ id, label, iconText, candidateViews }) {
       return {
         id,
@@ -616,6 +619,123 @@
       };
     }
 
+    function normalizeBrownieRef(value) {
+      return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    }
+
+    function decodeBrownieEscapedUrl(value) {
+      return String(value || "")
+        .replace(/\\u0026/g, "&")
+        .replace(/\\\//g, "/");
+    }
+
+    function parseBrownieFeedEntries(pageText) {
+      const entries = [];
+      const entryRegex = /"reference"\s*:\s*"([^"]+)"[\s\S]*?"images"\s*:\s*\[(.*?)\][\s\S]*?"url"\s*:\s*"([^"]+)"[\s\S]*?"parent"\s*:\s*"([^"]+)"/g;
+
+      let match;
+      while ((match = entryRegex.exec(pageText)) !== null) {
+        const reference = match[1];
+        const imagesChunk = match[2];
+        const productUrl = decodeBrownieEscapedUrl(match[3]);
+        const parent = match[4];
+
+        const imageUrls = [];
+        const imageRegex = /"(https?:\\\/\\\/[^"]+)"/g;
+        let imageMatch;
+
+        while ((imageMatch = imageRegex.exec(imagesChunk)) !== null) {
+          imageUrls.push(decodeBrownieEscapedUrl(imageMatch[1]));
+        }
+
+        if (!reference || !imageUrls.length) continue;
+
+        entries.push({
+          reference,
+          normalizedReference: normalizeBrownieRef(reference),
+          parent,
+          normalizedParent: normalizeBrownieRef(parent),
+          productUrl,
+          images: imageUrls
+        });
+      }
+
+      return entries;
+    }
+
+    async function fetchTextWithTimeout(url, timeoutMs = 15000) {
+      const response = await fetchWithTimeout(url, {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store"
+      }, timeoutMs);
+
+      if (!response.ok) {
+        throw new Error(`Brownie feed HTTP ${response.status}`);
+      }
+
+      return await response.text();
+    }
+
+    async function loadBrownieFeedEntries(forceRefresh = false) {
+      if (brownieFeedCache && !forceRefresh) {
+        return brownieFeedCache;
+      }
+
+      const firstPageText = await fetchTextWithTimeout(BROWNIE_FEED_BASE, 15000);
+      const pagesMatch = firstPageText.match(/"pages"\s*:\s*(\d+)/);
+      const totalPages = Math.max(1, Math.min(Number(pagesMatch?.[1] || 1), 8));
+
+      const allEntries = parseBrownieFeedEntries(firstPageText);
+
+      for (let page = 2; page <= totalPages; page++) {
+        const pageText = await fetchTextWithTimeout(`${BROWNIE_FEED_BASE}?page=${page}`, 15000);
+        const pageEntries = parseBrownieFeedEntries(pageText);
+        allEntries.push(...pageEntries);
+      }
+
+      brownieFeedCache = allEntries;
+      return allEntries;
+    }
+
+    function createBrownieBrand() {
+      return {
+        id: "brownie",
+        label: "Brownie",
+        iconText: "BRW",
+        templateHeader: "Modelo brownie",
+        parseCode(code) {
+          const clean = String(code || "").trim();
+          const normalized = normalizeBrownieRef(clean);
+
+          if (!clean || !normalized) return null;
+
+          return {
+            type: "base",
+            raw: clean,
+            normalized
+          };
+        },
+        async getCandidateEntries(parsed) {
+          const entries = await loadBrownieFeedEntries();
+          const matched = entries.find(entry =>
+            entry.normalizedReference === parsed.normalized ||
+            entry.normalizedParent === parsed.normalized
+          );
+
+          if (!matched) return [];
+
+          return matched.images.map((url, index) => ({
+            displayCode: `${matched.reference} [${index + 1}]`,
+            sourceLabel: String(index + 1),
+            url,
+            productUrl: matched.productUrl,
+            matchedReference: matched.reference
+          }));
+        }
+      };
+    }
+
     const BRANDS = {
       mango: createModelColorBrand({
         id: "mango",
@@ -638,6 +758,7 @@
         candidateViews: ["051", "016", "052", "055", "053", "054", "061", "056"]
       }),
 
+      brownie: createBrownieBrand(),
       etam: createEtamBrand()
     };
 
@@ -679,7 +800,7 @@
       renderBrands();
       bindEvents();
       renderSummary();
-      updateEtamUI();
+      updateSpecialUI();
       setEtamRequestState("idle", "ETAM en espera");
     }
 
@@ -719,12 +840,14 @@
           state.activeBrand = brandId;
           renderBrands();
           renderSummary();
-          updateEtamUI();
+          updateSpecialUI();
           els.activeBrandLabel.textContent = BRANDS[brandId].label;
 
           if (brandId === "etam") {
             setStatus("ETAM usa backend y procesamiento por bloques automáticos.");
             setEtamRequestState("idle", "ETAM en espera");
+          } else if (brandId === "brownie") {
+            setStatus("Brownie usa MODELO del Excel y el orden de images[] del feed.");
           } else {
             setStatus(`${BRANDS[brandId].label} activo.`);
           }
@@ -735,7 +858,7 @@
       });
     }
 
-    function updateEtamUI() {
+    function updateSpecialUI() {
       const isEtam = state.activeBrand === "etam";
       els.btnProcess.textContent = isEtam ? "Procesar ETAM" : "Procesar";
       els.btnDownloadZip.style.display = "inline-flex";
@@ -782,11 +905,20 @@
       return v.includes("sku") && v.includes("falabella");
     }
 
-    function guessColumnIndexes(firstRow) {
+    function guessColumnIndexes(firstRow, activeBrand) {
       const normalized = firstRow.map(normalizeHeader);
 
-      let modelIndex = normalized.findIndex(v => looksLikeModelHeader(v));
+      let modelIndex = -1;
       let skuIndex = normalized.findIndex(v => looksLikeSkuHeader(v));
+
+      if (activeBrand === "brownie") {
+        modelIndex = normalized.findIndex(v => v === "modelo");
+        if (modelIndex === -1) {
+          modelIndex = normalized.findIndex(v => looksLikeModelHeader(v));
+        }
+      } else {
+        modelIndex = normalized.findIndex(v => looksLikeModelHeader(v));
+      }
 
       if (modelIndex === -1) modelIndex = 0;
       if (skuIndex === -1) skuIndex = 1;
@@ -820,6 +952,8 @@
         if (state.activeBrand === "etam") {
           setStatus(`${rows.length} fila(s) cargada(s). ETAM se procesará por bloques automáticos.`);
           setEtamRequestState("idle", "ETAM listo para procesar");
+        } else if (state.activeBrand === "brownie") {
+          setStatus(`${rows.length} fila(s) cargada(s). Brownie usará la columna MODELO.`);
         } else {
           setStatus(`${rows.length} fila(s) cargada(s) desde ${file.name}.`);
         }
@@ -843,7 +977,7 @@
 
       if (!matrix.length) return [];
 
-      const { modelIndex, skuIndex } = guessColumnIndexes(matrix[0]);
+      const { modelIndex, skuIndex } = guessColumnIndexes(matrix[0], state.activeBrand);
       const firstRow = matrix[0].map(v => normalizeHeader(v));
       const firstRowLooksLikeHeader =
         firstRow.some(v => looksLikeModelHeader(v) || looksLikeSkuHeader(v)) ||
@@ -1431,6 +1565,20 @@
       setStatus(`Buscando y descargando... 0/${totalRows}`);
 
       try {
+        if (brand.id === "brownie") {
+          try {
+            await loadBrownieFeedEntries(true);
+          } catch (error) {
+            state.errors.push("Brownie: no se pudo leer el catálogo/feed público. Si esta marca bloquea CORS, la pasamos a lógica tipo ETAM.");
+            renderErrors();
+            renderSummary();
+            renderResults();
+            setProgress(0);
+            setStatus("Brownie no pudo leer el feed.");
+            return;
+          }
+        }
+
         for (let rowIndex = 0; rowIndex < state.rawRows.length; rowIndex++) {
           const row = state.rawRows[rowIndex];
           const inputCode = String(row.modelCode || "").trim();
@@ -1462,11 +1610,25 @@
             continue;
           }
 
-          const candidateEntries = brand.getCandidateEntries(parsed);
+          let candidateEntries = [];
+          try {
+            candidateEntries = await Promise.resolve(brand.getCandidateEntries(parsed));
+          } catch (error) {
+            if (brand.id === "brownie") {
+              state.errors.push(`Fila ${row.rowNumber}: Brownie no pudo resolver la referencia desde el feed.`);
+            } else {
+              state.errors.push(`Fila ${row.rowNumber}: no se pudieron resolver vistas para "${inputCode}".`);
+            }
+            state.rowResults.push(rowResult);
+            setProgress(Math.round(((rowIndex + 1) / totalRows) * 100));
+            setStatus(`Buscando y descargando... ${rowIndex + 1}/${totalRows}`);
+            continue;
+          }
+
           const foundItemsForRow = [];
 
           for (const entry of candidateEntries) {
-            const result = await fetchBlobIfExistsDetailed(entry.url, { fetchTimeoutMs: 8000 });
+            const result = await fetchBlobIfExistsDetailed(entry.url, { fetchTimeoutMs: 10000 });
 
             if (result.blob) {
               foundItemsForRow.push({
@@ -1482,7 +1644,9 @@
           }
 
           if (foundItemsForRow.length === 0) {
-            if (parsed.type === "exact") {
+            if (brand.id === "brownie") {
+              state.errors.push(`Fila ${row.rowNumber}: Brownie no encontró imágenes para "${inputCode}".`);
+            } else if (parsed.type === "exact") {
               state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
             } else {
               state.errors.push(`Fila ${row.rowNumber}: no se encontraron vistas para "${inputCode}".`);
@@ -1539,7 +1703,7 @@
         }
       } finally {
         els.btnProcess.disabled = false;
-        els.btnDownloadZip.disabled = state.items.length === 0;
+        els.btnDownloadZip.disabled = state.items.length === 0 && !state.etamFinalZipBlob;
       }
     }
 
@@ -1602,6 +1766,8 @@
       if (!state.items.length) {
         if (state.activeBrand === "etam") {
           els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend en bloques automáticos. A medida que salgan bloques correctos, las imágenes aparecerán aquí abajo.</div>';
+        } else if (state.activeBrand === "brownie") {
+          els.resultsPanel.innerHTML = '<div class="empty">Brownie usa MODELO del Excel y el orden de images[] del feed público.</div>';
         } else {
           els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
         }
