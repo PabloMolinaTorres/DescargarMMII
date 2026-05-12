@@ -556,8 +556,9 @@
     const ETAM_BATCH_SIZE = 5;
     const ETAM_BATCH_TIMEOUT_MS = 180000;
 
-    const BROWNIE_FEED_BASE = "https://www.browniespain.com/es-de/pages/feed-empathy";
+    const BROWNIE_LOCALES = ["es-de", "es-pt", "en-es", "en-fr", ""];
     let brownieFeedCache = null;
+    let brownieSearchCache = new Map();
 
     function createModelColorBrand({ id, label, iconText, candidateViews }) {
       return {
@@ -623,32 +624,82 @@
       return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     }
 
-    function decodeBrownieEscapedUrl(value) {
+    function brownieLocaleUrl(locale, path) {
+      if (!locale) return `https://www.browniespain.com${path}`;
+      return `https://www.browniespain.com/${locale}${path}`;
+    }
+
+    function decodeBrownieEscapedText(value) {
       return String(value || "")
         .replace(/\\u0026/g, "&")
-        .replace(/\\\//g, "/");
+        .replace(/\\\//g, "/")
+        .replace(/&amp;/g, "&");
+    }
+
+    function uniqPreserveOrder(arr) {
+      const seen = new Set();
+      const out = [];
+      for (const item of arr) {
+        const key = String(item);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(item);
+      }
+      return out;
+    }
+
+    function cleanBrownieImageUrl(url) {
+      return decodeBrownieEscapedText(url)
+        .replace(/\\+/g, "")
+        .trim();
+    }
+
+    function extractBrownieImagesFromHtml(html) {
+      const decoded = decodeBrownieEscapedText(html);
+      const matches = decoded.match(/https:\/\/www\.browniespain\.com\/cdn\/shop\/files\/[^"'()\s<>\\]+/g) || [];
+      return uniqPreserveOrder(
+        matches
+          .map(cleanBrownieImageUrl)
+          .filter(url => /\.(jpg|jpeg|png|webp|avif)(\?|$)/i.test(url))
+      );
+    }
+
+    function extractBrownieRefFromHtml(html) {
+      const decoded = decodeBrownieEscapedText(html);
+
+      const refLabelMatch = decoded.match(/Ref:\s*([A-Z0-9-]+)/i);
+      if (refLabelMatch) return refLabelMatch[1].trim();
+
+      const refJsonMatch = decoded.match(/"reference"\s*:\s*"([^"]+)"/i);
+      if (refJsonMatch) return refJsonMatch[1].trim();
+
+      return "";
     }
 
     function parseBrownieFeedEntries(pageText) {
       const entries = [];
-      const entryRegex = /"reference"\s*:\s*"([^"]+)"[\s\S]*?"images"\s*:\s*\[(.*?)\][\s\S]*?"url"\s*:\s*"([^"]+)"[\s\S]*?"parent"\s*:\s*"([^"]+)"/g;
+      const decoded = decodeBrownieEscapedText(pageText);
 
+      const entryRegex = /"reference"\s*:\s*"([^"]+)"[\s\S]*?"images"\s*:\s*\[(.*?)\][\s\S]*?"url"\s*:\s*"([^"]+)"[\s\S]*?"parent"\s*:\s*"([^"]+)"/g;
       let match;
-      while ((match = entryRegex.exec(pageText)) !== null) {
+
+      while ((match = entryRegex.exec(decoded)) !== null) {
         const reference = match[1];
         const imagesChunk = match[2];
-        const productUrl = decodeBrownieEscapedUrl(match[3]);
+        const productUrl = match[3];
         const parent = match[4];
 
         const imageUrls = [];
-        const imageRegex = /"(https?:\\\/\\\/[^"]+)"/g;
+        const imageRegex = /"(https?:\/\/[^"]+)"/g;
         let imageMatch;
 
         while ((imageMatch = imageRegex.exec(imagesChunk)) !== null) {
-          imageUrls.push(decodeBrownieEscapedUrl(imageMatch[1]));
+          imageUrls.push(cleanBrownieImageUrl(imageMatch[1]));
         }
 
-        if (!reference || !imageUrls.length) continue;
+        const cleanImages = uniqPreserveOrder(imageUrls).filter(Boolean);
+
+        if (!reference || !cleanImages.length) continue;
 
         entries.push({
           reference,
@@ -656,7 +707,7 @@
           parent,
           normalizedParent: normalizeBrownieRef(parent),
           productUrl,
-          images: imageUrls
+          images: cleanImages
         });
       }
 
@@ -671,7 +722,7 @@
       }, timeoutMs);
 
       if (!response.ok) {
-        throw new Error(`Brownie feed HTTP ${response.status}`);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       return await response.text();
@@ -682,20 +733,125 @@
         return brownieFeedCache;
       }
 
-      const firstPageText = await fetchTextWithTimeout(BROWNIE_FEED_BASE, 15000);
-      const pagesMatch = firstPageText.match(/"pages"\s*:\s*(\d+)/);
-      const totalPages = Math.max(1, Math.min(Number(pagesMatch?.[1] || 1), 8));
+      const dedupe = new Map();
 
-      const allEntries = parseBrownieFeedEntries(firstPageText);
+      for (const locale of BROWNIE_LOCALES) {
+        const baseUrl = brownieLocaleUrl(locale, "/pages/feed-empathy");
 
-      for (let page = 2; page <= totalPages; page++) {
-        const pageText = await fetchTextWithTimeout(`${BROWNIE_FEED_BASE}?page=${page}`, 15000);
-        const pageEntries = parseBrownieFeedEntries(pageText);
-        allEntries.push(...pageEntries);
+        try {
+          const firstPageText = await fetchTextWithTimeout(baseUrl, 15000);
+          const pagesMatch = firstPageText.match(/"pages"\s*:\s*(\d+)/);
+          const totalPages = Math.max(1, Math.min(Number(pagesMatch?.[1] || 1), 8));
+
+          const firstEntries = parseBrownieFeedEntries(firstPageText);
+          for (const entry of firstEntries) {
+            const key = `${entry.normalizedReference}|${entry.productUrl}`;
+            if (!dedupe.has(key)) dedupe.set(key, entry);
+          }
+
+          for (let page = 2; page <= totalPages; page++) {
+            try {
+              const pageText = await fetchTextWithTimeout(`${baseUrl}?page=${page}`, 15000);
+              const pageEntries = parseBrownieFeedEntries(pageText);
+
+              for (const entry of pageEntries) {
+                const key = `${entry.normalizedReference}|${entry.productUrl}`;
+                if (!dedupe.has(key)) dedupe.set(key, entry);
+              }
+            } catch (_) {
+            }
+          }
+        } catch (_) {
+        }
       }
 
-      brownieFeedCache = allEntries;
-      return allEntries;
+      brownieFeedCache = Array.from(dedupe.values());
+      return brownieFeedCache;
+    }
+
+    function makeBrownieHyphenVariant(raw) {
+      const clean = String(raw || "").trim();
+      if (!clean) return clean;
+
+      if (/^[A-Z]\d{2}-\d{4}-\d{6}$/i.test(clean)) {
+        return clean.replace(/^(.*)-(\d{3})(\d{3})$/, "$1-$2-$3");
+      }
+
+      if (/^[A-Z]\d{2}-\d{4}-\d{3}-\d{3}$/i.test(clean)) {
+        return clean;
+      }
+
+      return clean;
+    }
+
+    function buildBrownieSearchQueries(parsed) {
+      const raw = String(parsed.raw || "").trim();
+      const hyphenVariant = makeBrownieHyphenVariant(raw);
+      const normalized = normalizeBrownieRef(raw);
+
+      return uniqPreserveOrder([
+        raw,
+        hyphenVariant,
+        normalized
+      ].filter(Boolean));
+    }
+
+    function extractBrownieProductUrlsFromSearchHtml(html) {
+      const decoded = decodeBrownieEscapedText(html);
+      const urls = [];
+
+      const absoluteRegex = /https:\/\/www\.browniespain\.com\/(?:[a-z]{2}-[a-z]{2}\/)?products\/[^"'?#<\s]+/gi;
+      const relativeRegex = /href="(\/(?:[a-z]{2}-[a-z]{2}\/)?products\/[^"#?<\s]+)"/gi;
+
+      let match;
+      while ((match = absoluteRegex.exec(decoded)) !== null) {
+        urls.push(match[0]);
+      }
+
+      while ((match = relativeRegex.exec(decoded)) !== null) {
+        urls.push(`https://www.browniespain.com${match[1]}`);
+      }
+
+      return uniqPreserveOrder(
+        urls.map(url => decodeBrownieEscapedText(url).split("?")[0])
+      );
+    }
+
+    async function searchBrownieProductUrls(query) {
+      const cacheKey = query.toUpperCase();
+      if (brownieSearchCache.has(cacheKey)) {
+        return brownieSearchCache.get(cacheKey);
+      }
+
+      const foundUrls = [];
+
+      for (const locale of BROWNIE_LOCALES) {
+        const searchUrl = brownieLocaleUrl(locale, `/search?q=${encodeURIComponent(query)}&type=product`);
+
+        try {
+          const html = await fetchTextWithTimeout(searchUrl, 15000);
+          const urls = extractBrownieProductUrlsFromSearchHtml(html);
+          foundUrls.push(...urls);
+        } catch (_) {
+        }
+      }
+
+      const uniqueUrls = uniqPreserveOrder(foundUrls);
+      brownieSearchCache.set(cacheKey, uniqueUrls);
+      return uniqueUrls;
+    }
+
+    async function fetchBrownieProductDetail(productUrl) {
+      const html = await fetchTextWithTimeout(productUrl, 15000);
+      const reference = extractBrownieRefFromHtml(html);
+      const images = extractBrownieImagesFromHtml(html);
+
+      return {
+        productUrl,
+        reference,
+        normalizedReference: normalizeBrownieRef(reference),
+        images
+      };
     }
 
     function createBrownieBrand() {
@@ -717,13 +873,52 @@
           };
         },
         async getCandidateEntries(parsed) {
-          const entries = await loadBrownieFeedEntries();
-          const matched = entries.find(entry =>
-            entry.normalizedReference === parsed.normalized ||
-            entry.normalizedParent === parsed.normalized
-          );
+          let matched = null;
 
-          if (!matched) return [];
+          try {
+            const feedEntries = await loadBrownieFeedEntries();
+            matched = feedEntries.find(entry =>
+              entry.normalizedReference === parsed.normalized ||
+              entry.normalizedParent === parsed.normalized
+            );
+          } catch (_) {
+          }
+
+          if (!matched) {
+            const queries = buildBrownieSearchQueries(parsed);
+
+            for (const query of queries) {
+              const productUrls = await searchBrownieProductUrls(query);
+
+              for (const productUrl of productUrls) {
+                try {
+                  const detail = await fetchBrownieProductDetail(productUrl);
+                  const detailNorm = normalizeBrownieRef(detail.reference);
+
+                  if (
+                    detailNorm === parsed.normalized ||
+                    detailNorm.includes(parsed.normalized) ||
+                    parsed.normalized.includes(detailNorm)
+                  ) {
+                    matched = {
+                      reference: detail.reference || parsed.raw,
+                      normalizedReference: detailNorm || parsed.normalized,
+                      productUrl: detail.productUrl,
+                      images: detail.images || []
+                    };
+                    break;
+                  }
+                } catch (_) {
+                }
+              }
+
+              if (matched) break;
+            }
+          }
+
+          if (!matched || !matched.images || !matched.images.length) {
+            return [];
+          }
 
           return matched.images.map((url, index) => ({
             displayCode: `${matched.reference} [${index + 1}]`,
@@ -847,7 +1042,7 @@
             setStatus("ETAM usa backend y procesamiento por bloques automáticos.");
             setEtamRequestState("idle", "ETAM en espera");
           } else if (brandId === "brownie") {
-            setStatus("Brownie usa MODELO del Excel y el orden de images[] del feed.");
+            setStatus("Brownie: primero feed multi-locale, luego búsqueda interna, luego PDP.");
           } else {
             setStatus(`${BRANDS[brandId].label} activo.`);
           }
@@ -1566,16 +1761,10 @@
 
       try {
         if (brand.id === "brownie") {
+          setStatus("Brownie: cargando feeds y fallback...");
           try {
             await loadBrownieFeedEntries(true);
-          } catch (error) {
-            state.errors.push("Brownie: no se pudo leer el catálogo/feed público. Si esta marca bloquea CORS, la pasamos a lógica tipo ETAM.");
-            renderErrors();
-            renderSummary();
-            renderResults();
-            setProgress(0);
-            setStatus("Brownie no pudo leer el feed.");
-            return;
+          } catch (_) {
           }
         }
 
@@ -1615,7 +1804,7 @@
             candidateEntries = await Promise.resolve(brand.getCandidateEntries(parsed));
           } catch (error) {
             if (brand.id === "brownie") {
-              state.errors.push(`Fila ${row.rowNumber}: Brownie no pudo resolver la referencia desde el feed.`);
+              state.errors.push(`Fila ${row.rowNumber}: Brownie no pudo resolver la referencia desde feed/búsqueda/PDP.`);
             } else {
               state.errors.push(`Fila ${row.rowNumber}: no se pudieron resolver vistas para "${inputCode}".`);
             }
@@ -1645,7 +1834,7 @@
 
           if (foundItemsForRow.length === 0) {
             if (brand.id === "brownie") {
-              state.errors.push(`Fila ${row.rowNumber}: Brownie no encontró imágenes para "${inputCode}".`);
+              state.errors.push(`Fila ${row.rowNumber}: Brownie no encontró imágenes para "${inputCode}". Si se repite mucho, pasamos Brownie a lógica tipo ETAM.`);
             } else if (parsed.type === "exact") {
               state.errors.push(`Fila ${row.rowNumber}: no existe "${inputCode}".`);
             } else {
@@ -1767,7 +1956,7 @@
         if (state.activeBrand === "etam") {
           els.resultsPanel.innerHTML = '<div class="empty">ETAM se procesa por backend en bloques automáticos. A medida que salgan bloques correctos, las imágenes aparecerán aquí abajo.</div>';
         } else if (state.activeBrand === "brownie") {
-          els.resultsPanel.innerHTML = '<div class="empty">Brownie usa MODELO del Excel y el orden de images[] del feed público.</div>';
+          els.resultsPanel.innerHTML = '<div class="empty">Brownie intenta en este orden: feed multi-locale → búsqueda interna → PDP del producto.</div>';
         } else {
           els.resultsPanel.innerHTML = '<div class="empty">No hay imágenes listas todavía.</div>';
         }
